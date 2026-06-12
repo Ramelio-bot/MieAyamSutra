@@ -257,7 +257,7 @@ export default function KDSPage() {
     
     const text = `*Beli Barang/Belanja*
 
-Nama toko : Mie Ayam Sutra (Jl. Imam Bonjol No.85)
+Nama toko : Mie Ayam Sutra (Pusat Kuliner Kridanggo, Salatiga)
 
 Nama barang dan jumlahnya:
 ${itemsText}
@@ -269,7 +269,7 @@ Atas nama : ${order.customer_name}
 
 No penerima : ${order.customer_phone}
 
-Pembayaran cash/transfer: Cash (Kurir menagih Total Belanja + Ongkir JeggBoy ke konsumen di lokasi)
+Pembayaran cash/transfer: Cash (Kurir menagih Total Belanja + Ongkir Ojol ke konsumen di lokasi)
 
 (Note : Jika ada gambar bisa dikirim terpisah dari format ya kak)
 
@@ -424,7 +424,7 @@ No rekening dapat pilih salah satu :
                       </>
                     ) : (
                       <>
-                        <Copy size={14} /> Salin Format JeggBoy
+                        <Copy size={14} /> Salin Format Ojol
                       </>
                     )}
                   </button>

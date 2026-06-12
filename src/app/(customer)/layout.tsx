@@ -62,7 +62,7 @@ export default function CustomerLayout({
       <footer className="bg-charcoal text-white/60 py-12 text-center text-sm mt-auto">
         <div className="container mx-auto px-4">
           <p className="font-bold text-white text-lg mb-2">Mie Ayam Sutra.</p>
-          <p>Jl. Imam Bonjol No.85, Salatiga</p>
+          <p>Pusat Kuliner Kridanggo, Salatiga, Kec. Sidorejo, Kota Salatiga, Jawa Tengah 50724</p>
           <p className="mt-8">&copy; {new Date().getFullYear()} Mie Ayam Sutra. All rights reserved.</p>
         </div>
       </footer>

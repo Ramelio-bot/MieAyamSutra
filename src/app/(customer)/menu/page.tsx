@@ -134,9 +134,9 @@ export default function MenuPage() {
 
               <div className="pt-4">
                 <div className="bg-zinc-50 p-6 rounded-2xl text-zinc-700 text-sm leading-relaxed border border-zinc-100">
-                  <span className="font-extrabold text-charcoal block mb-2 tracking-wider uppercase text-xs">Metode Pembayaran: Cash / Talangan JeggBoy</span>
+                  <span className="font-extrabold text-charcoal block mb-2 tracking-wider uppercase text-xs">Metode Pembayaran: Cash / Talangan Ojek Online Lokal Salatiga</span>
                   <p className="text-zinc-500 font-medium">
-                    Sistem 100% menggunakan pembayaran tunai di tempat. Driver JeggBoy akan menalangi total belanja Anda dan menagihnya beserta ongkir saat tiba di lokasi.
+                    Sistem 100% menggunakan pembayaran tunai di tempat. Kurir Ojek Online Lokal akan menalangi total belanja Anda dan menagihnya beserta ongkir saat tiba di lokasi.
                   </p>
                 </div>
               </div>

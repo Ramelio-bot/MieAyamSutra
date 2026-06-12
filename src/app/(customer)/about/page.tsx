@@ -1,3 +1,23 @@
+import { MapPin, Mail, Clock } from "lucide-react";
+
+const Instagram = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    stroke="currentColor"
+    strokeWidth="2"
+    fill="none"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+  </svg>
+);
+
 export default function AboutPage() {
   return (
     <article className="container mx-auto px-4 lg:px-8 py-20 md:py-32 max-w-4xl">
@@ -30,10 +50,50 @@ export default function AboutPage() {
           </p>
         </section>
 
-        {/* Visual Section */}
-        <div className="w-full aspect-[21/9] bg-zinc-100 rounded-[2rem] border border-zinc-200/50 shadow-sm mt-16 overflow-hidden flex items-center justify-center">
-          <span className="text-zinc-400 text-sm font-extrabold uppercase tracking-widest">Artisanal Noodle Kitchen 📸</span>
+        {/* Operational & Location Quick Details */}
+        <section className="pt-12 border-t border-zinc-150 grid grid-cols-1 md:grid-cols-2 gap-8 text-sm">
+          <div className="space-y-4">
+            <h3 className="text-sm font-extrabold text-charcoal uppercase tracking-widest flex items-center gap-2">
+              <MapPin size={16} className="text-gold" /> Lokasi Baru Kami
+            </h3>
+            <p className="text-zinc-500 leading-relaxed font-medium pl-6">
+              Pusat Kuliner Kridanggo, Salatiga,<br />
+              Kec. Sidorejo, Kota Salatiga, Jawa Tengah 50724
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-extrabold text-charcoal uppercase tracking-widest flex items-center gap-2">
+              <Clock size={16} className="text-gold" /> Jam Operasional
+            </h3>
+            <p className="text-zinc-500 leading-relaxed font-medium pl-6">
+              Selasa - Minggu: 09.00 - 22.00 WIB | <span className="text-red-600 font-bold">Senin: TUTUP</span>
+            </p>
+          </div>
+        </section>
+
+        {/* Visual Map Placeholder pointing precisely to Pusat Kuliner Kridanggo */}
+        <div className="w-full aspect-[21/9] bg-zinc-100 rounded-[2rem] border border-zinc-200/50 shadow-sm mt-16 overflow-hidden flex flex-col items-center justify-center relative">
+          <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{
+            backgroundImage: "radial-gradient(circle, #000 10%, transparent 11%)",
+            backgroundSize: "20px 20px"
+          }} />
+          <MapPin className="text-gold mb-2" size={32} />
+          <span className="text-charcoal font-black uppercase tracking-wider text-sm">Pusat Kuliner Kridanggo Salatiga</span>
+          <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest mt-1">Google Maps Location Pin 📍</span>
         </div>
+
+        {/* Brand Contacts */}
+        <footer className="pt-12 border-t border-zinc-150 flex flex-wrap gap-8 justify-between text-zinc-500 text-sm font-medium">
+          <div className="flex items-center gap-2">
+            <Mail size={16} className="text-zinc-400" />
+            <span>Email: <a href="mailto:Mieayamsutra88@gmail.com" className="text-charcoal hover:underline">Mieayamsutra88@gmail.com</a></span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Instagram className="text-zinc-400" />
+            <span>Instagram: <a href="https://instagram.com/MieAyamSutra" target="_blank" rel="noopener noreferrer" className="text-charcoal hover:underline">@MieAyamSutra</a></span>
+          </div>
+        </footer>
       </div>
     </article>
   );
