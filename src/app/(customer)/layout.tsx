@@ -94,36 +94,14 @@ export default function CustomerLayout({
 
           {/* Cart & Staff Portal Right */}
           <div className="flex-shrink-0 flex items-center gap-4">
-            {/* Staff Portal Dropdown */}
-            <div className="relative" ref={dropdownRef}>
-              <button
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="p-2 text-charcoal hover:text-gold transition-colors flex items-center justify-center border border-zinc-200 hover:border-zinc-300 rounded-full bg-white shadow-xs"
-                title="Portal Staf"
-              >
-                <Lock size={18} strokeWidth={2.5} />
-              </button>
-
-              {isDropdownOpen && (
-                <div className="absolute right-0 mt-3 w-56 bg-white border border-zinc-150 rounded-2xl shadow-xl py-2 z-50">
-                  <div className="px-4 py-2 border-b border-zinc-100 mb-1">
-                    <p className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-widest">Portal Staf</p>
-                  </div>
-                  <button
-                    onClick={() => handleOpenLogin("/admin")}
-                    className="w-full text-left px-4 py-3 text-xs font-bold text-charcoal hover:bg-zinc-50 hover:text-gold transition-colors uppercase tracking-wider"
-                  >
-                    Dashboard Admin
-                  </button>
-                  <button
-                    onClick={() => handleOpenLogin("/dapur")}
-                    className="w-full text-left px-4 py-3 text-xs font-bold text-charcoal hover:bg-zinc-50 hover:text-gold transition-colors uppercase tracking-wider"
-                  >
-                    Monitor KDS Dapur
-                  </button>
-                </div>
-              )}
-            </div>
+            {/* Staff Portal Button */}
+            <button
+              onClick={() => handleOpenLogin("/admin")}
+              className="p-2 text-charcoal hover:text-gold transition-colors flex items-center justify-center border border-zinc-200 hover:border-zinc-300 rounded-full bg-white shadow-xs"
+              title="Portal Operasional Staff"
+            >
+              <Lock size={18} strokeWidth={2.5} />
+            </button>
 
             <button 
               onClick={toggleCart}
@@ -199,7 +177,7 @@ export default function CustomerLayout({
               </div>
               <h3 className="text-xl font-black text-charcoal uppercase tracking-tight">Verifikasi PIN Staf</h3>
               <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider">
-                Akses Terbatas ke {selectedRoute === "/admin" ? "Dashboard Admin" : "Monitor Dapur"}
+                Akses Terbatas ke Pusat Kendali Operasional
               </p>
             </div>
 
