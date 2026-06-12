@@ -763,7 +763,7 @@ No rekening dapat pilih salah satu :
                 <div className="flex gap-2 shrink-0">
                   <button
                     onClick={() => setReportFilter("ALL")}
-                    className={`px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-lg transition-colors border ${
+                    className={`px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-xl transition-colors border ${
                       reportFilter === "ALL" 
                         ? "bg-charcoal text-white border-charcoal" 
                         : "bg-white text-zinc-500 border-zinc-200 hover:text-zinc-800"
@@ -773,20 +773,20 @@ No rekening dapat pilih salah satu :
                   </button>
                   <button
                     onClick={() => setReportFilter("SUCCESS")}
-                    className={`px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-lg transition-colors border ${
+                    className={`px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-xl transition-colors border ${
                       reportFilter === "SUCCESS" 
                         ? "bg-green-600 text-white border-green-600" 
-                        : "bg-white text-zinc-500 border-zinc-200 hover:text-green-650"
+                        : "bg-white text-zinc-500 border-zinc-200 hover:text-green-600"
                     }`}
                   >
                     Sukses ({historyOrders.filter(o => o.status === "COMPLETED").length})
                   </button>
                   <button
                     onClick={() => setReportFilter("CANCELLED")}
-                    className={`px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-lg transition-colors border ${
+                    className={`px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-xl transition-colors border ${
                       reportFilter === "CANCELLED" 
                         ? "bg-red-600 text-white border-red-600" 
-                        : "bg-white text-zinc-500 border-zinc-200 hover:text-red-650"
+                        : "bg-white text-zinc-500 border-zinc-200 hover:text-red-600"
                     }`}
                   >
                     Batal ({historyOrders.filter(o => o.status === "CANCELLED").length})
@@ -855,8 +855,8 @@ No rekening dapat pilih salah satu :
                                   BATAL
                                 </span>
                                 {order.cancel_reason && (
-                                  <span className="text-[10px] text-red-500 font-extrabold max-w-[150px] truncate" title={order.cancel_reason}>
-                                    {order.cancel_reason}
+                                  <span className="text-[10.5px] text-zinc-500 font-medium italic mt-1 block max-w-[155px] truncate" title={order.cancel_reason}>
+                                    Alasan: {order.cancel_reason}
                                   </span>
                                 )}
                               </div>
@@ -882,7 +882,7 @@ No rekening dapat pilih salah satu :
 
       {/* Rejection Reason Modal */}
       {isCancelModalOpen && (
-        <div className="fixed inset-0 z-50 bg-charcoal/45 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-[2rem] max-w-sm w-full p-8 border border-zinc-150 shadow-2xl relative">
             <button 
               onClick={() => {
