@@ -60,19 +60,51 @@ const MOCK_PREPARING_ORDERS: Order[] = [
   }
 ];
 
+const MOCK_HISTORY_ORDERS: Order[] = [
+  {
+    id: "ord-1002",
+    shortId: "1002",
+    time: "11:15 WIB",
+    customer_name: "Adi Pratama",
+    customer_phone: "08129876543",
+    delivery_address: "Kost Argomulyo Raya No 5, Salatiga",
+    total_amount: 19000,
+    status: "COMPLETED",
+    items: [
+      { name: "Mie Ayam Pangsit", qty: 1, price: 19000 }
+    ]
+  },
+  {
+    id: "ord-1003",
+    shortId: "1003",
+    time: "10:45 WIB",
+    customer_name: "Siska Amelia",
+    customer_phone: "08573216549",
+    delivery_address: "Jl. Diponegoro No 12, Salatiga",
+    total_amount: 30000,
+    status: "CANCELLED",
+    items: [
+      { name: "Mie Ayam Biasa", qty: 2, price: 15000 }
+    ]
+  }
+];
+
 export default function CommandCenterPage() {
   const router = useRouter();
   const [isAuthorized, setIsAuthorized] = useState(false);
+  const [activeTab, setActiveTab] = useState<"monitor" | "laporan">("monitor");
   const [orders, setOrders] = useState<Order[]>([]);
+  const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
   const [isMockMode, setIsMockMode] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   
-  // Audio state
-  const [isAlerting, setIsAlerting] = useState(false);
+  // Audio state (One-shot chime controls)
   const [isMuted, setIsMuted] = useState(false);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const audioIntervalRef = useRef<any>(null);
-  const [prevPreparingCount, setPrevPreparingCount] = useState(0);
+  const isMutedRef = useRef(isMuted);
+
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
 
   // Helper to map DB row to State structure
   const mapDbOrderToKdsOrder = (dbOrder: any): Order => {
@@ -91,13 +123,13 @@ export default function CommandCenterPage() {
     };
   };
 
-  // Sound Synthesizer: Soft notification chime (played once on new pending order)
+  // Sound Synthesizer: Soft notification chime (played exactly once on new pending order)
   const playSubtleChime = () => {
     try {
       if (typeof window === "undefined") return;
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const now = audioCtx.currentTime;
-      const tones = [987.77, 1318.51]; // B5 and E6
+      const tones = [987.77, 1318.51]; // B5 and E6 (friendly notification chime)
 
       tones.forEach((freq, idx) => {
         const osc = audioCtx.createOscillator();
@@ -118,53 +150,6 @@ export default function CommandCenterPage() {
       });
     } catch (e) {
       console.error("Audio Context error:", e);
-    }
-  };
-
-  // Sound alarm: Loud repeating buzzer (played while any PREPARING order is cooking)
-  const startAlarm = () => {
-    if (isAlerting) return;
-    setIsAlerting(true);
-    if (typeof window === "undefined") return;
-
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-
-    const ctx = audioCtxRef.current;
-    
-    audioIntervalRef.current = setInterval(() => {
-      if (ctx.state === "suspended") {
-        ctx.resume();
-      }
-
-      const tones = [880, 1318]; // A5 and E6
-      
-      tones.forEach((freq, idx) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.05);
-
-        gain.gain.setValueAtTime(0, ctx.currentTime);
-        gain.gain.linearRampToValueAtTime(0.4, ctx.currentTime + 0.02 + idx * 0.05);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6 + idx * 0.05);
-
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-
-        osc.start(ctx.currentTime + idx * 0.05);
-        osc.stop(ctx.currentTime + 0.6 + idx * 0.05);
-      });
-    }, 900);
-  };
-
-  const stopAlarm = () => {
-    setIsAlerting(false);
-    if (audioIntervalRef.current) {
-      clearInterval(audioIntervalRef.current);
-      audioIntervalRef.current = null;
     }
   };
 
@@ -192,10 +177,11 @@ export default function CommandCenterPage() {
 
     if (isPlaceholder) {
       setOrders([...MOCK_PENDING_ORDERS, ...MOCK_PREPARING_ORDERS]);
+      setHistoryOrders(MOCK_HISTORY_ORDERS);
       return;
     }
 
-    // Fetch initial pending & preparing orders
+    // Fetch initial active pending & preparing orders
     const fetchOrders = async () => {
       const { data, error } = await supabase
         .from("orders")
@@ -208,7 +194,21 @@ export default function CommandCenterPage() {
       }
     };
 
+    // Fetch initial completed & cancelled orders
+    const fetchHistory = async () => {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*")
+        .in("status", ["COMPLETED", "CANCELLED"])
+        .order("created_at", { ascending: false });
+      
+      if (!error && data) {
+        setHistoryOrders(data.map(mapDbOrderToKdsOrder));
+      }
+    };
+
     fetchOrders();
+    fetchHistory();
 
     // Subscribe to all inserts/updates on 'orders'
     const channel = supabase
@@ -220,9 +220,11 @@ export default function CommandCenterPage() {
           const newOrder = mapDbOrderToKdsOrder(payload.new);
           if (newOrder.status === "PENDING" || newOrder.status === "PREPARING") {
             setOrders(prev => [newOrder, ...prev]);
-            if (newOrder.status === "PENDING") {
+            if (newOrder.status === "PENDING" && !isMutedRef.current) {
               playSubtleChime();
             }
+          } else if (newOrder.status === "COMPLETED" || newOrder.status === "CANCELLED") {
+            setHistoryOrders(prev => [newOrder, ...prev]);
           }
         }
       )
@@ -240,9 +242,19 @@ export default function CommandCenterPage() {
                 return [updatedOrder, ...prev];
               }
             });
+            // If moved back, remove from history
+            setHistoryOrders(prev => prev.filter(o => o.id !== updatedOrder.id));
           } else {
-            // COMPLETED or CANCELLED: remove from active view
+            // COMPLETED or CANCELLED: remove from active and add to history
             setOrders(prev => prev.filter(o => o.id !== updatedOrder.id));
+            setHistoryOrders(prev => {
+              const exists = prev.some(o => o.id === updatedOrder.id);
+              if (exists) {
+                return prev.map(o => o.id === updatedOrder.id ? updatedOrder : o);
+              } else {
+                return [updatedOrder, ...prev];
+              }
+            });
           }
         }
       )
@@ -252,39 +264,6 @@ export default function CommandCenterPage() {
       supabase.removeChannel(channel);
     };
   }, [isAuthorized]);
-
-  // Sync alarm state on order updates: Auto unmute on new cooking orders
-  useEffect(() => {
-    if (!isAuthorized) return;
-    const preparingCount = orders.filter(o => o.status === "PREPARING").length;
-    if (preparingCount > prevPreparingCount) {
-      setIsMuted(false); // Unmute immediately when a new KDS order lands
-    }
-    setPrevPreparingCount(preparingCount);
-  }, [orders, prevPreparingCount, isAuthorized]);
-
-  // Sync Audio Buzzer Playback
-  useEffect(() => {
-    if (!isAuthorized) return;
-    const hasPreparing = orders.some(o => o.status === "PREPARING");
-    if (hasPreparing && !isMuted) {
-      startAlarm();
-    } else {
-      stopAlarm();
-    }
-  }, [orders, isMuted, isAuthorized]);
-
-  // Cleanup Web Audio elements on component unmount
-  useEffect(() => {
-    return () => {
-      if (audioCtxRef.current) {
-        audioCtxRef.current.close();
-      }
-      if (audioIntervalRef.current) {
-        clearInterval(audioIntervalRef.current);
-      }
-    };
-  }, []);
 
   // Simulator
   const handleSimulateOrder = async (targetStatus: "PENDING" | "PREPARING") => {
@@ -322,7 +301,7 @@ export default function CommandCenterPage() {
         ...mockOrderData
       };
       setOrders(prev => [newOrder, ...prev]);
-      if (targetStatus === "PENDING") {
+      if (targetStatus === "PENDING" && !isMuted) {
         playSubtleChime();
       }
     } else {
@@ -342,17 +321,27 @@ export default function CommandCenterPage() {
   };
 
   const handleCancel = async (id: string) => {
+    const targetOrder = orders.find(o => o.id === id);
     if (isMockMode) {
-      setOrders(prev => prev.filter(o => o.id !== id));
+      if (targetOrder) {
+        const updated = { ...targetOrder, status: "CANCELLED" as const };
+        setOrders(prev => prev.filter(o => o.id !== id));
+        setHistoryOrders(prev => [updated, ...prev]);
+      }
     } else {
       const { error } = await supabase.from("orders").update({ status: "CANCELLED" }).eq("id", id);
-      if (error) alert("Gagal membatalkan orderan: " + error.message);
+      if (error) alert("Gagal mematalkan orderan: " + error.message);
     }
   };
 
   const handleComplete = async (id: string) => {
+    const targetOrder = orders.find(o => o.id === id);
     if (isMockMode) {
-      setOrders(prev => prev.filter(o => o.id !== id));
+      if (targetOrder) {
+        const updated = { ...targetOrder, status: "COMPLETED" as const };
+        setOrders(prev => prev.filter(o => o.id !== id));
+        setHistoryOrders(prev => [updated, ...prev]);
+      }
     } else {
       const { error } = await supabase.from("orders").update({ status: "COMPLETED" }).eq("id", id);
       if (error) alert("Gagal menyelesaikan pesanan: " + error.message);
@@ -408,8 +397,24 @@ No rekening dapat pilih salah satu :
     );
   }
 
+  // Monitor calculations
   const pendingOrders = orders.filter(o => o.status === "PENDING");
   const preparingOrders = orders.filter(o => o.status === "PREPARING");
+
+  // Report calculations
+  const totalOmzet = historyOrders
+    .filter(o => o.status === "COMPLETED")
+    .reduce((sum, o) => sum + o.total_amount, 0);
+
+  const totalPorsi = historyOrders
+    .filter(o => o.status === "COMPLETED")
+    .reduce((sum, o) => {
+      return sum + o.items
+        .filter(item => item.name.toLowerCase().includes("mie"))
+        .reduce((itemSum, item) => itemSum + item.qty, 0);
+    }, 0);
+
+  const totalDibatalkan = historyOrders.filter(o => o.status === "CANCELLED").length;
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-white">
@@ -437,20 +442,19 @@ No rekening dapat pilih salah satu :
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Mute alarm button */}
-          {preparingOrders.length > 0 && (
-            <button
-              onClick={() => setIsMuted(!isMuted)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 shadow-sm border ${
-                isMuted 
-                  ? "bg-zinc-100 hover:bg-zinc-200 text-zinc-650 border-zinc-250" 
-                  : "bg-red-600 hover:bg-red-750 text-white border-red-700 animate-pulse"
-              }`}
-            >
-              {isMuted ? <BellOff size={14} /> : <Bell size={14} />}
-              {isMuted ? "Bunyikan Alarm" : "Senyapkan Alarm"}
-            </button>
-          )}
+          {/* Mute toggle button */}
+          <button
+            onClick={() => setIsMuted(!isMuted)}
+            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 border bg-white ${
+              isMuted 
+                ? "text-zinc-400 border-zinc-200 hover:text-zinc-600 hover:border-zinc-300" 
+                : "text-zinc-700 border-zinc-200 hover:text-gold hover:border-gold"
+            }`}
+            title={isMuted ? "Suara Chime Dimatikan" : "Suara Chime Aktif"}
+          >
+            {isMuted ? <BellOff size={14} /> : <Bell size={14} />}
+            {isMuted ? "Muted" : "Suara Chime"}
+          </button>
 
           <button 
             onClick={() => handleSimulateOrder("PENDING")}
@@ -467,176 +471,323 @@ No rekening dapat pilih salah satu :
         </div>
       </header>
 
-      {/* Split column command panel */}
-      <div className="flex-1 flex overflow-hidden">
+      {/* Tab bar switch */}
+      <div className="flex border-b border-zinc-200 bg-white shrink-0 px-6">
+        <button
+          onClick={() => setActiveTab("monitor")}
+          className={`py-3.5 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all ${
+            activeTab === "monitor"
+              ? "border-charcoal text-charcoal"
+              : "border-transparent text-zinc-400 hover:text-zinc-650"
+          }`}
+        >
+          Monitor Operasional ({orders.length})
+        </button>
+        <button
+          onClick={() => setActiveTab("laporan")}
+          className={`py-3.5 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all ${
+            activeTab === "laporan"
+              ? "border-charcoal text-charcoal"
+              : "border-transparent text-zinc-400 hover:text-zinc-650"
+          }`}
+        >
+          Laporan Penjualan ({historyOrders.length})
+        </button>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-hidden relative">
         
-        {/* LEFT COLUMN: Admin Verification (Light Mode) */}
-        <section className="w-1/2 bg-zinc-50 border-r border-zinc-200 flex flex-col h-full overflow-hidden">
-          <div className="p-4 px-6 border-b border-zinc-200 flex justify-between items-center bg-white shrink-0">
-            <h2 className="text-sm font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-              <span>Antrean Pesanan Baru</span>
-              <span className="bg-zinc-100 text-zinc-800 border border-zinc-200 text-[10px] px-2 py-0.5 rounded-md font-extrabold">
-                {pendingOrders.length}
-              </span>
-            </h2>
-            <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Lakukan Validasi</span>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {pendingOrders.length === 0 ? (
-              <div className="h-64 flex flex-col items-center justify-center text-zinc-400 space-y-3">
-                <ShoppingBag size={36} strokeWidth={1.5} />
-                <p className="text-xs font-bold tracking-widest uppercase">Tidak ada pesanan baru</p>
+        {activeTab === "monitor" ? (
+          /* MONITOR TAB: Split screen */
+          <div className="h-full flex overflow-hidden">
+            
+            {/* LEFT COLUMN: Admin Verification (Light Mode) */}
+            <section className="w-1/2 bg-zinc-50 border-r border-zinc-200 flex flex-col h-full overflow-hidden">
+              <div className="p-4 px-6 border-b border-zinc-200 flex justify-between items-center bg-white shrink-0">
+                <h2 className="text-sm font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                  <span>Antrean Pesanan Baru</span>
+                  <span className="bg-zinc-100 text-zinc-800 border border-zinc-200 text-[10px] px-2 py-0.5 rounded-md font-extrabold">
+                    {pendingOrders.length}
+                  </span>
+                </h2>
+                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Lakukan Validasi</span>
               </div>
-            ) : (
-              pendingOrders.map((order) => (
-                <div 
-                  key={order.id}
-                  className="bg-white rounded-[1.5rem] border border-zinc-200 shadow-xs flex flex-col justify-between overflow-hidden"
-                >
-                  <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/40">
-                    <h3 className="text-lg font-black text-zinc-800">#{order.shortId}</h3>
-                    <span className="bg-zinc-200 text-zinc-650 text-[9px] font-extrabold px-1.5 py-0.5 rounded tracking-wide">
-                      {order.time}
-                    </span>
-                  </div>
 
-                  <div className="p-4 space-y-4 text-xs">
-                    <div className="space-y-2.5">
-                      {order.items.map((item, idx) => (
-                        <div key={idx} className="flex items-start gap-2 pb-2 border-b border-zinc-100/50 last:border-0 last:pb-0">
-                          <span className="font-extrabold text-gold">{item.qty}x</span>
-                          <div className="flex-1">
-                            <span className="font-bold text-zinc-800 uppercase tracking-tight block">{item.name}</span>
-                            {item.notes && <span className="text-[10px] font-bold text-zinc-400 block italic">Catatan: {item.notes}</span>}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {pendingOrders.length === 0 ? (
+                  <div className="h-64 flex flex-col items-center justify-center text-zinc-400 space-y-3">
+                    <ShoppingBag size={36} strokeWidth={1.5} />
+                    <p className="text-xs font-bold tracking-widest uppercase">Tidak ada pesanan baru</p>
+                  </div>
+                ) : (
+                  pendingOrders.map((order) => (
+                    <div 
+                      key={order.id}
+                      className="bg-white rounded-[1.5rem] border border-zinc-200 shadow-xs flex flex-col justify-between overflow-hidden"
+                    >
+                      <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/40">
+                        <h3 className="text-lg font-black text-zinc-800">#{order.shortId}</h3>
+                        <span className="bg-zinc-200 text-zinc-650 text-[9px] font-extrabold px-1.5 py-0.5 rounded tracking-wide">
+                          {order.time}
+                        </span>
+                      </div>
+
+                      <div className="p-4 space-y-4 text-xs">
+                        <div className="space-y-2.5">
+                          {order.items.map((item, idx) => (
+                            <div key={idx} className="flex items-start gap-2 pb-2 border-b border-zinc-100/50 last:border-0 last:pb-0">
+                              <span className="font-extrabold text-gold">{item.qty}x</span>
+                              <div className="flex-1">
+                                <span className="font-bold text-zinc-800 uppercase tracking-tight block">{item.name}</span>
+                                {item.notes && <span className="text-[10px] font-bold text-zinc-400 block italic">Catatan: {item.notes}</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="pt-3 border-t border-zinc-100 space-y-1.5 text-zinc-600">
+                          <div>
+                            <span className="text-[9px] font-bold uppercase text-zinc-400 block tracking-wider">Konsumen</span>
+                            <span className="font-extrabold text-zinc-750 uppercase">{order.customer_name} ({order.customer_phone})</span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-bold uppercase text-zinc-400 block tracking-wider">Alamat Kirim</span>
+                            <span className="font-semibold text-zinc-500 leading-normal">{order.delivery_address}</span>
+                          </div>
+                          <div className="flex justify-between items-center pt-2">
+                            <span className="text-[10px] font-extrabold text-zinc-700 uppercase">Total Harga</span>
+                            <span className="font-black text-sm text-zinc-900">{formatRupiah(order.total_amount)}</span>
                           </div>
                         </div>
-                      ))}
+                      </div>
+
+                      <div className="p-4 bg-zinc-50/50 border-t border-zinc-100 flex gap-2">
+                        <button 
+                          onClick={() => handleConfirm(order.id)}
+                          className="flex-1 bg-charcoal text-white hover:bg-gold hover:text-charcoal font-black py-2.5 rounded-lg text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-1 shadow-xs"
+                        >
+                          <Check size={12} /> Kirim Dapur
+                        </button>
+                        <button 
+                          onClick={() => handleCancel(order.id)}
+                          className="bg-transparent hover:bg-red-50 text-red-600 border border-zinc-200 hover:border-red-200 font-bold py-2.5 px-3 rounded-lg text-[10px] uppercase tracking-widest transition-all"
+                        >
+                          Tolak
+                        </button>
+                      </div>
                     </div>
-
-                    <div className="pt-3 border-t border-zinc-100 space-y-1.5 text-zinc-600">
-                      <div>
-                        <span className="text-[9px] font-bold uppercase text-zinc-400 block tracking-wider">Konsumen</span>
-                        <span className="font-extrabold text-zinc-750 uppercase">{order.customer_name} ({order.customer_phone})</span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] font-bold uppercase text-zinc-400 block tracking-wider">Alamat Kirim</span>
-                        <span className="font-semibold text-zinc-500 leading-normal">{order.delivery_address}</span>
-                      </div>
-                      <div className="flex justify-between items-center pt-2">
-                        <span className="text-[10px] font-extrabold text-zinc-700 uppercase">Total Harga</span>
-                        <span className="font-black text-sm text-zinc-900">{formatRupiah(order.total_amount)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-zinc-50/50 border-t border-zinc-100 flex gap-2">
-                    <button 
-                      onClick={() => handleConfirm(order.id)}
-                      className="flex-1 bg-charcoal text-white hover:bg-gold hover:text-charcoal font-black py-2.5 rounded-lg text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-1 shadow-xs"
-                    >
-                      <Check size={12} /> Kirim Dapur
-                    </button>
-                    <button 
-                      onClick={() => handleCancel(order.id)}
-                      className="bg-transparent hover:bg-red-50 text-red-600 border border-zinc-200 hover:border-red-200 font-bold py-2.5 px-3 rounded-lg text-[10px] uppercase tracking-widest transition-all"
-                    >
-                      Tolak
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-
-        {/* RIGHT COLUMN: Kitchen Monitor (Dark Mode KDS) */}
-        <section className="w-1/2 bg-zinc-900 flex flex-col h-full overflow-hidden text-zinc-200">
-          <div className="p-4 px-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-950 shrink-0">
-            <h2 className="text-sm font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-              <span>Monitor Memasak (KDS)</span>
-              <span className="bg-red-500/10 text-red-400 border border-red-500/20 text-[10px] px-2 py-0.5 rounded-md font-extrabold">
-                {preparingOrders.length}
-              </span>
-            </h2>
-            <span className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider">Antrean Dapur</span>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {preparingOrders.length === 0 ? (
-              <div className="h-64 flex flex-col items-center justify-center text-zinc-600 space-y-3">
-                <span className="text-3xl">🍲</span>
-                <p className="text-xs font-bold tracking-widest uppercase">Semua masakan selesai</p>
+                  ))
+                )}
               </div>
-            ) : (
-              preparingOrders.map((order) => (
-                <div 
-                  key={order.id}
-                  className="bg-zinc-950 rounded-[1.5rem] border-2 border-zinc-850 flex flex-col justify-between overflow-hidden"
-                >
-                  <div className="p-4 border-b border-zinc-850 flex items-center justify-between bg-zinc-900/50">
-                    <h3 className="text-xl font-black text-white">#{order.shortId}</h3>
-                    <span className="bg-zinc-800 text-zinc-300 text-[9px] font-extrabold px-1.5 py-0.5 rounded tracking-wide">
-                      {order.time}
-                    </span>
-                  </div>
+            </section>
 
-                  <div className="p-4 space-y-5">
-                    <div className="space-y-3.5">
-                      {order.items.map((item, idx) => (
-                        <div key={idx} className="flex items-start gap-3 pb-3 border-b border-zinc-900 last:border-0 last:pb-0">
-                          <span className="text-xl font-black text-gold leading-none">{item.qty}x</span>
-                          <div className="flex-1">
-                            <span className="text-lg font-black text-zinc-100 uppercase tracking-tight leading-tight block">{item.name}</span>
-                            {item.notes && (
-                              <span className="text-xs font-black text-amber-400 block tracking-wide bg-amber-500/10 py-1 px-2.5 rounded-lg border border-amber-500/20 mt-1">
-                                CATATAN: {item.notes}
+            {/* RIGHT COLUMN: Kitchen Monitor (Dark Mode KDS) */}
+            <section className="w-1/2 bg-zinc-900 flex flex-col h-full overflow-hidden text-zinc-200">
+              <div className="p-4 px-6 border-b border-zinc-850 flex justify-between items-center bg-zinc-950 shrink-0">
+                <h2 className="text-sm font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                  <span>Monitor Memasak (KDS)</span>
+                  <span className="bg-red-500/10 text-red-400 border border-red-500/20 text-[10px] px-2 py-0.5 rounded-md font-extrabold">
+                    {preparingOrders.length}
+                  </span>
+                </h2>
+                <span className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider">Antrean Dapur</span>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {preparingOrders.length === 0 ? (
+                  <div className="h-64 flex flex-col items-center justify-center text-zinc-600 space-y-3">
+                    <span className="text-3xl">🍲</span>
+                    <p className="text-xs font-bold tracking-widest uppercase">Semua masakan selesai</p>
+                  </div>
+                ) : (
+                  preparingOrders.map((order) => (
+                    <div 
+                      key={order.id}
+                      className="bg-zinc-950 rounded-[1.5rem] border-2 border-zinc-850 flex flex-col justify-between overflow-hidden"
+                    >
+                      <div className="p-4 border-b border-zinc-850 flex items-center justify-between bg-zinc-900/50">
+                        <h3 className="text-xl font-black text-white">#{order.shortId}</h3>
+                        <span className="bg-zinc-800 text-zinc-300 text-[9px] font-extrabold px-1.5 py-0.5 rounded tracking-wide">
+                          {order.time}
+                        </span>
+                      </div>
+
+                      <div className="p-4 space-y-5">
+                        <div className="space-y-3.5">
+                          {order.items.map((item, idx) => (
+                            <div key={idx} className="flex items-start gap-3 pb-3 border-b border-zinc-900 last:border-0 last:pb-0">
+                              <span className="text-xl font-black text-gold leading-none">{item.qty}x</span>
+                              <div className="flex-1">
+                                <span className="text-lg font-black text-zinc-100 uppercase tracking-tight leading-tight block">{item.name}</span>
+                                {item.notes && (
+                                  <span className="text-xs font-black text-amber-400 block tracking-wide bg-amber-500/10 py-1 px-2.5 rounded-lg border border-amber-500/20 mt-1">
+                                    CATATAN: {item.notes}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="pt-4 border-t border-zinc-900 space-y-2 text-xs text-zinc-400">
+                          <div>
+                            <span className="text-[9px] font-bold uppercase text-zinc-550 block tracking-wider">Pelanggan</span>
+                            <span className="font-extrabold text-zinc-200 uppercase text-sm">{order.customer_name} ({order.customer_phone})</span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-bold uppercase text-zinc-550 block tracking-wider">Alamat</span>
+                            <span className="font-semibold text-zinc-300 leading-normal">{order.delivery_address}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-zinc-900/40 border-t border-zinc-900 flex flex-col gap-2">
+                        <button 
+                          onClick={() => handleComplete(order.id)}
+                          className="w-full bg-gold hover:bg-yellow-500 text-charcoal font-black py-3 rounded-lg text-xs uppercase tracking-widest transition-colors flex items-center justify-center gap-1"
+                        >
+                          Selesai Masak
+                    </button>
+                        <button 
+                          onClick={() => copyToJeggBoy(order)}
+                          className="w-full bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 font-bold py-2.5 rounded-lg text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
+                        >
+                          {copiedId === order.id ? (
+                            <>
+                              <Check size={12} className="text-green-500" /> Disalin!
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={12} /> Salin Format Ojol
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+            
+          </div>
+        ) : (
+          /* LAPORAN TAB: Historical data table and aggregates */
+          <div className="h-full overflow-y-auto p-8 bg-zinc-50 space-y-8">
+            
+            {/* Minimalist Metrics aggregates */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              
+              <div className="bg-white rounded-[1.5rem] border border-zinc-200 p-6 shadow-xs flex flex-col justify-between">
+                <span className="text-zinc-400 font-extrabold uppercase text-[10px] tracking-wider block">
+                  Total Omzet Berhasil
+                </span>
+                <span className="text-3xl font-black text-zinc-950 tracking-tight block mt-3">
+                  {formatRupiah(totalOmzet)}
+                </span>
+                <span className="text-[10.5px] font-bold text-green-600 bg-green-50 border border-green-100 rounded-md py-0.5 px-2 tracking-wide inline-block mt-3 self-start">
+                  Dana Talangan Sukses
+                </span>
+              </div>
+
+              <div className="bg-white rounded-[1.5rem] border border-zinc-200 p-6 shadow-xs flex flex-col justify-between">
+                <span className="text-zinc-400 font-extrabold uppercase text-[10px] tracking-wider block">
+                  Total Porsi Terjual
+                </span>
+                <span className="text-3xl font-black text-zinc-950 tracking-tight block mt-3">
+                  {totalPorsi} Porsi
+                </span>
+                <span className="text-[10.5px] font-bold text-gold bg-amber-50 border border-amber-100 rounded-md py-0.5 px-2 tracking-wide inline-block mt-3 self-start">
+                  Mie Ayam Dimasak
+                </span>
+              </div>
+
+              <div className="bg-white rounded-[1.5rem] border border-zinc-200 p-6 shadow-xs flex flex-col justify-between">
+                <span className="text-zinc-400 font-extrabold uppercase text-[10px] tracking-wider block">
+                  Total Order Dibatalkan
+                </span>
+                <span className="text-3xl font-black text-zinc-950 tracking-tight block mt-3">
+                  {totalDibatalkan} Order
+                </span>
+                <span className="text-[10.5px] font-bold text-red-650 bg-red-50 border border-red-100 rounded-md py-0.5 px-2 tracking-wide inline-block mt-3 self-start">
+                  Ditolak / Batal
+                </span>
+              </div>
+
+            </div>
+
+            {/* History Table list */}
+            <div className="bg-white rounded-[1.5rem] border border-zinc-200 shadow-xs overflow-hidden">
+              <div className="p-4 px-6 border-b border-zinc-250 flex justify-between items-center bg-white">
+                <h3 className="text-xs font-black text-zinc-700 uppercase tracking-widest">Daftar Transaksi Selesai</h3>
+                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Total: {historyOrders.length} Pesanan</span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-400 font-extrabold uppercase tracking-wider text-[10px]">
+                      <th className="py-4 px-6">Order ID</th>
+                      <th className="py-4 px-6">Waktu</th>
+                      <th className="py-4 px-6">Pelanggan</th>
+                      <th className="py-4 px-6">Alamat Antar</th>
+                      <th className="py-4 px-6">Menu Pesanan</th>
+                      <th className="py-4 px-6 text-right">Total Belanja</th>
+                      <th className="py-4 px-6 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100 font-semibold text-zinc-700">
+                    {historyOrders.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="text-center py-12 text-zinc-450 font-bold uppercase tracking-widest">
+                          Belum Ada Data Transaksi Histori
+                        </td>
+                      </tr>
+                    ) : (
+                      historyOrders.map((order) => (
+                        <tr key={order.id} className="hover:bg-zinc-50/50 transition-colors">
+                          <td className="py-4 px-6 font-extrabold text-zinc-950">#{order.shortId}</td>
+                          <td className="py-4 px-6 text-zinc-500">{order.time}</td>
+                          <td className="py-4 px-6">
+                            <span className="font-extrabold text-zinc-900 block">{order.customer_name}</span>
+                            <span className="text-[10px] text-zinc-400 block">{order.customer_phone}</span>
+                          </td>
+                          <td className="py-4 px-6 text-zinc-500 max-w-xs truncate" title={order.delivery_address}>
+                            {order.delivery_address}
+                          </td>
+                          <td className="py-4 px-6 text-zinc-650 max-w-xs">
+                            <div className="space-y-0.5">
+                              {order.items.map((item, idx) => (
+                                <div key={idx} className="truncate">
+                                  <span className="font-bold text-gold">{item.qty}x</span> {item.name}
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="py-4 px-6 text-right font-extrabold text-zinc-900">
+                            {formatRupiah(order.total_amount)}
+                          </td>
+                          <td className="py-4 px-6 text-center">
+                            {order.status === "COMPLETED" ? (
+                              <span className="bg-green-50 text-green-700 border border-green-200 text-[9px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider">
+                                SUKSES
+                              </span>
+                            ) : (
+                              <span className="bg-red-50 text-red-700 border border-red-200 text-[9px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider">
+                                BATAL
                               </span>
                             )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
 
-                    <div className="pt-4 border-t border-zinc-900 space-y-2 text-xs text-zinc-400">
-                      <div>
-                        <span className="text-[9px] font-bold uppercase text-zinc-550 block tracking-wider">Pelanggan</span>
-                        <span className="font-extrabold text-zinc-200 uppercase text-sm">{order.customer_name} ({order.customer_phone})</span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] font-bold uppercase text-zinc-550 block tracking-wider">Alamat</span>
-                        <span className="font-semibold text-zinc-300 leading-normal">{order.delivery_address}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-zinc-900/40 border-t border-zinc-900 flex flex-col gap-2">
-                    <button 
-                      onClick={() => handleComplete(order.id)}
-                      className="w-full bg-gold hover:bg-yellow-500 text-charcoal font-black py-3 rounded-lg text-xs uppercase tracking-widest transition-colors flex items-center justify-center gap-1"
-                    >
-                      Selesai Masak
-                    </button>
-                    <button 
-                      onClick={() => copyToJeggBoy(order)}
-                      className="w-full bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 font-bold py-2.5 rounded-lg text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
-                    >
-                      {copiedId === order.id ? (
-                        <>
-                          <Check size={12} className="text-green-500" /> Disalin!
-                        </>
-                      ) : (
-                        <>
-                          <Copy size={12} /> Salin Format Ojol
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
           </div>
-        </section>
+        )}
 
       </div>
 
