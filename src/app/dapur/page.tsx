@@ -20,10 +20,10 @@ interface Order {
   delivery_address: string;
   items: OrderItem[];
   total_amount: number;
-  status: "PENDING" | "PREPARING" | "COMPLETED";
+  status: "PENDING" | "PREPARING" | "COMPLETED" | "CANCELLED";
 }
 
-// Simulated initial orders for fallback / mock mode
+// Simulated initial orders for KDS in mock mode (already APPROVED by Admin)
 const MOCK_INITIAL_ORDERS: Order[] = [
   {
     id: "ord-1001",
@@ -33,7 +33,7 @@ const MOCK_INITIAL_ORDERS: Order[] = [
     customer_phone: "08123456789",
     delivery_address: "Kost Pondok Hijau, Gang Sawo No 4, Sidorejo, Salatiga",
     total_amount: 45000,
-    status: "PENDING",
+    status: "PREPARING",
     items: [
       { name: "Mie Ayam Biasa", qty: 2, price: 15000, notes: "Mienya agak lembek ya" },
       { name: "Mie Ayam Bakso", qty: 1, price: 20000, notes: "Tanpa daun bawang" }
@@ -122,38 +122,38 @@ export default function KDSPage() {
     setIsMockMode(isPlaceholder);
 
     if (isPlaceholder) {
-      // Load fallback mock data
       setOrders(MOCK_INITIAL_ORDERS);
       return;
     }
 
-    // Fetch live orders
+    // Fetch live approved orders (PREPARING status only)
     const fetchOrders = async () => {
       const { data, error } = await supabase
         .from("orders")
         .select("*")
-        .in("status", ["PENDING", "PREPARING"])
+        .eq("status", "PREPARING")
         .order("created_at", { ascending: false });
       
       if (!error && data) {
         setOrders(data.map(mapDbOrderToKdsOrder));
-        const hasPending = data.some((o: any) => o.status === "PENDING");
-        if (hasPending) startAlarm();
+        if (data.length > 0) startAlarm();
       }
     };
 
     fetchOrders();
 
-    // Subscribe to realtime postgres updates
+    // Subscribe to realtime updates for orders accepted by Admin (status = 'PREPARING')
     const channel = supabase
       .channel("kitchen-orders")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "orders" },
         (payload) => {
-          const newOrder = mapDbOrderToKdsOrder(payload.new);
-          setOrders(prev => [newOrder, ...prev]);
-          startAlarm();
+          if (payload.new.status === "PREPARING") {
+            const newOrder = mapDbOrderToKdsOrder(payload.new);
+            setOrders(prev => [newOrder, ...prev]);
+            startAlarm();
+          }
         }
       )
       .on(
@@ -161,10 +161,17 @@ export default function KDSPage() {
         { event: "UPDATE", schema: "public", table: "orders" },
         (payload) => {
           const updatedOrder = mapDbOrderToKdsOrder(payload.new);
-          if (updatedOrder.status === "COMPLETED") {
+          if (updatedOrder.status === "PREPARING") {
+            // New validated order has arrived in kitchen
+            setOrders(prev => {
+              const exists = prev.some(o => o.id === updatedOrder.id);
+              if (exists) return prev;
+              return [updatedOrder, ...prev];
+            });
+            startAlarm();
+          } else if (updatedOrder.status === "COMPLETED" || updatedOrder.status === "CANCELLED") {
+            // Cleared from kitchen
             setOrders(prev => prev.filter(o => o.id !== updatedOrder.id));
-          } else {
-            setOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
           }
         }
       )
@@ -176,10 +183,10 @@ export default function KDSPage() {
     };
   }, []);
 
-  // Sync alarm with active pending orders
+  // Sync alarm with active preparing orders
   useEffect(() => {
-    const hasPending = orders.some(o => o.status === "PENDING");
-    if (!hasPending) {
+    const hasPreparing = orders.some(o => o.status === "PREPARING");
+    if (!hasPreparing) {
       stopAlarm();
     }
   }, [orders]);
@@ -193,7 +200,7 @@ export default function KDSPage() {
     };
   }, []);
 
-  // Simulator helper: works in both mock and live mode
+  // Simulator: simulates inserting a PREPARING order directly to KDS
   const handleSimulateOrder = async () => {
     const nextId = 1000 + orders.length + 1;
     const now = new Date();
@@ -208,7 +215,7 @@ export default function KDSPage() {
         "Jl. Patimura No.105, Salatiga"
       ][Math.floor(Math.random() * 4)],
       total_amount: 34000,
-      status: "PENDING" as const,
+      status: "PREPARING" as const,
       items: [
         { name: "Mie Ayam Komplit Sutra", qty: 1, price: 25000, notes: "Kuah dipisah, ekstra sambal" },
         { name: "Es Teh Manis", qty: 2, price: 4000, notes: "Es batu dikit" }
@@ -225,18 +232,8 @@ export default function KDSPage() {
       setOrders(prev => [newOrder, ...prev]);
       startAlarm();
     } else {
-      // In live mode, insert directly to DB. The realtime listener will handle updating local state!
       const { error } = await supabase.from("orders").insert([mockOrderData]);
       if (error) alert("Error simulating order in DB: " + error.message);
-    }
-  };
-
-  const handleAccept = async (id: string) => {
-    if (isMockMode) {
-      setOrders(prev => prev.map(o => o.id === id ? { ...o, status: "PREPARING" } : o));
-    } else {
-      const { error } = await supabase.from("orders").update({ status: "PREPARING" }).eq("id", id);
-      if (error) alert("Gagal update status: " + error.message);
     }
   };
 
@@ -269,7 +266,8 @@ Atas nama : ${order.customer_name}
 
 No penerima : ${order.customer_phone}
 
-Pembayaran cash/transfer: Cash (Kurir menagih Total Belanja + Ongkir Ojol ke konsumen di lokasi)
+Pembayaran cash/transfer: CASH / TALANGAN OJEK ONLINE LOKAL SALATIGA
+(Note : Driver yang nalangi belanjaan kita, nanti driver yang menagih ke konsumen/pembeli di lokasi)
 
 (Note : Jika ada gambar bisa dikirim terpisah dari format ya kak)
 
@@ -341,9 +339,7 @@ No rekening dapat pilih salah satu :
             {orders.map((order) => (
               <div 
                 key={order.id} 
-                className={`w-[450px] max-h-full flex-shrink-0 bg-zinc-900 rounded-[2rem] border-2 flex flex-col ${
-                  order.status === "PENDING" ? "border-gold shadow-lg shadow-gold/5 animate-pulse" : "border-zinc-800"
-                }`}
+                className="w-[450px] max-h-full flex-shrink-0 bg-zinc-900 rounded-[2rem] border-2 border-zinc-800 flex flex-col"
               >
                 {/* Card Header */}
                 <div className="p-6 border-b border-zinc-800/80 flex items-center justify-between">
@@ -355,8 +351,8 @@ No rekening dapat pilih salah satu :
                     <span className="bg-zinc-800 text-zinc-300 text-[10px] font-extrabold px-2 py-1 rounded-md tracking-wider uppercase block">
                       {order.time}
                     </span>
-                    <span className="bg-amber-500/10 text-amber-500 text-[10px] font-extrabold px-2 py-1 rounded-md tracking-wider uppercase block border border-amber-500/20">
-                      CASH / TALANGAN
+                    <span className="bg-green-500/10 text-green-550 text-[10px] font-extrabold px-2 py-1 rounded-md tracking-wider uppercase block border border-green-500/20">
+                      APPROVED
                     </span>
                   </div>
                 </div>
@@ -398,21 +394,12 @@ No rekening dapat pilih salah satu :
 
                 {/* Card Actions */}
                 <div className="p-6 border-t border-zinc-800 flex flex-col gap-3 bg-zinc-900/50 rounded-b-[2rem]">
-                  {order.status === "PENDING" ? (
-                    <button 
-                      onClick={() => handleAccept(order.id)}
-                      className="w-full bg-gold hover:bg-yellow-500 text-charcoal font-black py-4 rounded-xl text-sm uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
-                    >
-                      Terima Orderan
-                    </button>
-                  ) : (
-                    <button 
-                      onClick={() => handleComplete(order.id)}
-                      className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-black py-4 rounded-xl text-sm uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
-                    >
-                      Selesai Masak
-                    </button>
-                  )}
+                  <button 
+                    onClick={() => handleComplete(order.id)}
+                    className="w-full bg-gold hover:bg-yellow-500 text-charcoal font-black py-4 rounded-xl text-sm uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
+                  >
+                    Selesai Masak
+                  </button>
 
                   <button 
                     onClick={() => copyToJeggBoy(order)}
