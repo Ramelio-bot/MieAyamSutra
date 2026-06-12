@@ -3,10 +3,27 @@
 import { useCart } from "@/hooks/useCart";
 import { formatRupiah } from "@/lib/constants";
 import { ShoppingBag, Trash2, X } from "lucide-react";
+import { useRouter, usePathname } from "next/navigation";
 
 export default function CartSheet() {
   const { items, getTotalItems, getTotalPrice, updateQty, removeFromCart, isCartOpen, closeCart } = useCart();
   const totalItems = getTotalItems();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const handleCheckoutClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    closeCart();
+    
+    if (pathname === "/menu") {
+      const element = document.getElementById("checkout-form");
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth" });
+      }
+    } else {
+      router.push("/menu#checkout-form");
+    }
+  };
 
   return (
     <>
@@ -103,13 +120,12 @@ export default function CartSheet() {
               <span className="font-bold text-gray-500 uppercase tracking-wider text-sm">Total</span>
               <span className="text-2xl font-black text-charcoal">{formatRupiah(getTotalPrice())}</span>
             </div>
-            <a 
-              href="#checkout" 
-              onClick={closeCart} 
+            <button 
+              onClick={handleCheckoutClick}
               className="w-full flex items-center justify-center bg-charcoal text-white py-4 rounded-full font-bold hover:bg-gold hover:text-charcoal transition-colors uppercase tracking-widest text-sm"
             >
               Checkout
-            </a>
+            </button>
           </div>
         )}
       </div>

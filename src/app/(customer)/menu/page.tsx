@@ -68,6 +68,19 @@ export default function MenuPage() {
     }
   }, [showSuccessModal, router]);
 
+  // Auto-scroll to form if URL contains #checkout-form hash
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash === "#checkout-form") {
+      const timer = setTimeout(() => {
+        const element = document.getElementById("checkout-form");
+        if (element) {
+          element.scrollIntoView({ behavior: "smooth" });
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
   return (
     <div className="py-16 md:py-24 relative">
       
@@ -105,7 +118,7 @@ export default function MenuPage() {
       </section>
 
       {/* Checkout Section */}
-      <section className="bg-zinc-50 border-t border-zinc-100 py-24 mt-32">
+      <section id="checkout-form" className="bg-zinc-50 border-t border-zinc-100 py-24 mt-32">
         <div className="container mx-auto px-4 lg:px-8 max-w-2xl">
           <div className="bg-white p-8 md:p-16 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.01)] border border-zinc-200/40">
             <div className="text-center mb-16 space-y-2">
