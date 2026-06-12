@@ -1,13 +1,13 @@
 @import "tailwindcss";
 
 @theme {
-  --color-charcoal: #2D2D2D;
-  --color-gold: #E6B014;
-  --color-kitchen-bg: #0f172a; /* slate-900 */
-  --color-kitchen-text: #f1f5f9; /* slate-100 */
-  --color-offwhite: #F9F9F9;
+  --color-charcoal: #18181b; /* zinc-900 */
+  --color-gold: #D97706;     /* amber-600 / gold */
+  --color-kitchen-bg: #09090b; /* zinc-950 */
+  --color-kitchen-text: #fafafa; /* zinc-50 */
+  --color-offwhite: #fafafa;  /* zinc-50 */
   
-  --font-sans: var(--font-inter);
+  --font-sans: var(--font-outfit);
 }
 
 @layer base {
