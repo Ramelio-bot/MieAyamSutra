@@ -67,15 +67,7 @@ export default function KDSPage() {
     }
   }, [router]);
 
-  if (!isAuthorized) {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <p className="text-zinc-500 font-extrabold uppercase tracking-widest text-xs animate-pulse">
-          Memverifikasi Otorisasi...
-        </p>
-      </div>
-    );
-  }
+
 
   // Helper to map DB columns to KDS state structure
   const mapDbOrderToKdsOrder = (dbOrder: any): Order => {
@@ -143,6 +135,8 @@ export default function KDSPage() {
 
   // Check Supabase URL & Setup Database Connection
   useEffect(() => {
+    if (!isAuthorized) return;
+
     const isPlaceholder = process.env.NEXT_PUBLIC_SUPABASE_URL === undefined || 
                           process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
     
@@ -208,15 +202,16 @@ export default function KDSPage() {
       supabase.removeChannel(channel);
       stopAlarm();
     };
-  }, []);
+  }, [isAuthorized]);
 
   // Sync alarm with active preparing orders
   useEffect(() => {
+    if (!isAuthorized) return;
     const hasPreparing = orders.some(o => o.status === "PREPARING");
     if (!hasPreparing) {
       stopAlarm();
     }
-  }, [orders]);
+  }, [orders, isAuthorized]);
 
   // Clean audio context on unmount
   useEffect(() => {
@@ -311,6 +306,16 @@ No rekening dapat pilih salah satu :
       setTimeout(() => setCopiedId(null), 2000);
     });
   };
+
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <p className="text-zinc-500 font-extrabold uppercase tracking-widest text-xs animate-pulse">
+          Memverifikasi Otorisasi...
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 md:p-8 flex flex-col h-screen overflow-hidden">

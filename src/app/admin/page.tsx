@@ -62,15 +62,7 @@ export default function AdminPage() {
     }
   }, [router]);
 
-  if (!isAuthorized) {
-    return (
-      <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
-        <p className="text-zinc-500 font-extrabold uppercase tracking-widest text-xs animate-pulse">
-          Memverifikasi Otorisasi...
-        </p>
-      </div>
-    );
-  }
+
 
   const mapDbOrderToKdsOrder = (dbOrder: any): Order => {
     const date = new Date(dbOrder.created_at);
@@ -120,6 +112,8 @@ export default function AdminPage() {
 
   // Check Supabase URL & Setup Database Connection
   useEffect(() => {
+    if (!isAuthorized) return;
+
     const isPlaceholder = process.env.NEXT_PUBLIC_SUPABASE_URL === undefined || 
                           process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
     
@@ -177,7 +171,7 @@ export default function AdminPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [isAuthorized]);
 
   const handleSimulateOrder = async () => {
     const nextId = 2000 + orders.length + 1;
@@ -235,6 +229,16 @@ export default function AdminPage() {
       if (error) alert("Gagal membatalkan orderan: " + error.message);
     }
   };
+
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
+        <p className="text-zinc-500 font-extrabold uppercase tracking-widest text-xs animate-pulse">
+          Memverifikasi Otorisasi...
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 md:p-8 flex flex-col min-h-screen">
