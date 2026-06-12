@@ -19,6 +19,9 @@ export default function MenuPage() {
     phone: "",
     address: ""
   });
+  
+  const [selectedCategory, setSelectedCategory] = useState<string>("Mie Klasik");
+  const CATEGORIES = ["Mie Klasik", "Miago", "Mie Pedas", "Rice Bowl & Steak", "Camilan", "Minuman"];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,17 +104,34 @@ export default function MenuPage() {
 
       {/* Menu Section */}
       <section className="container mx-auto px-4 lg:px-8">
-        <div className="mb-20 text-center max-w-xl mx-auto space-y-4">
+        <div className="mb-12 text-center max-w-xl mx-auto space-y-4">
           <h2 className="text-4xl md:text-6xl font-black text-charcoal uppercase tracking-tighter leading-none">Pilihan Menu</h2>
           <p className="text-zinc-500 leading-relaxed font-medium">
-            Pilih racikan mi khas kami dan tambahkan instruksi khusus sesuai selera Anda.
+            Pilih racikan menu khas kami dan nikmati kelezatan rasa selembut sutra.
           </p>
-          <div className="w-16 h-1 bg-gold mx-auto mt-6"></div>
+          <div className="w-16 h-1 bg-gold mx-auto mt-4"></div>
+        </div>
+
+        {/* Category Tabs Switcher */}
+        <div className="flex flex-wrap items-center justify-center gap-3 mb-20 max-w-4xl mx-auto">
+          {CATEGORIES.map(category => (
+            <button
+              key={category}
+              onClick={() => setSelectedCategory(category)}
+              className={`px-5 py-2.5 rounded-full text-xs font-black uppercase tracking-wider border transition-all ${
+                selectedCategory === category
+                  ? "bg-charcoal text-white border-charcoal shadow-md scale-[1.03]"
+                  : "bg-white text-zinc-500 border-zinc-200 hover:text-zinc-900 hover:border-zinc-350"
+              }`}
+            >
+              {category}
+            </button>
+          ))}
         </div>
         
         {/* High-padding grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-24">
-          {MOCK_MENUS.map(menu => (
+          {MOCK_MENUS.filter(menu => menu.category === selectedCategory).map(menu => (
             <MenuCard key={menu.id} menu={menu} />
           ))}
         </div>

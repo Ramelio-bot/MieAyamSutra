@@ -306,23 +306,22 @@ export default function CommandCenterPage() {
         "Kos Puteri Kemuning No.18, Sidorejo, Salatiga",
         "Jl. Argoboga No.8, Argomulyo, Salatiga"
       ][Math.floor(Math.random() * 3)],
-      total_amount: targetStatus === "PENDING" ? 35000 : (targetStatus === "PREPARING" ? 45000 : 23000),
+      total_amount: targetStatus === "PENDING" ? 36000 : (targetStatus === "PREPARING" ? 43000 : 24000),
       status: targetStatus,
       items: targetStatus === "PENDING" 
         ? [
-            { name: "Mie Ayam Biasa", qty: 1, price: 15000, notes: "Sayur sawi banyakin" },
-            { name: "Mie Ayam Bakso", qty: 1, price: 20000 }
+            { name: "Mie Ayam Ori", qty: 1, price: 15000, notes: "Sayur sawi banyakin" },
+            { name: "Mie Ayam Bakso", qty: 1, price: 21000 }
           ]
         : targetStatus === "PREPARING"
         ? [
-            { name: "Mie Ayam Komplit Sutra", qty: 1, price: 25000, notes: "Kuah dipisah" },
+            { name: "Mie Ayam Komplit", qty: 1, price: 27000, notes: "Kuah dipisah" },
             { name: "Es Jeruk Peras", qty: 1, price: 6000 },
-            { name: "Es Teh Manis", qty: 2, price: 4000 }
+            { name: "Es Teh", qty: 2, price: 5000 }
           ]
         : [
-            { name: "Mie Ayam Biasa", qty: 1, price: 15000, notes: "Ojol langsung gas" },
-            { name: "Es Jeruk Peras", qty: 1, price: 6000 },
-            { name: "Es Teh Manis", qty: 1, price: 4000 }
+            { name: "Miago Ori", qty: 1, price: 19000, notes: "Ojol langsung gas" },
+            { name: "Es Teh", qty: 1, price: 5000 }
           ]
     };
 
