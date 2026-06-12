@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Copy, Check, BellRing, Database } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -42,6 +43,8 @@ const MOCK_INITIAL_ORDERS: Order[] = [
 ];
 
 export default function KDSPage() {
+  const router = useRouter();
+  const [isAuthorized, setIsAuthorized] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [isAlerting, setIsAlerting] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -50,6 +53,27 @@ export default function KDSPage() {
   // Audio Web API refs
   const audioCtxRef = useRef<AudioContext | null>(null);
   const audioIntervalRef = useRef<any>(null);
+
+  // Check auth state
+  useEffect(() => {
+    const token = localStorage.getItem("sutra_staff_token");
+    if (token !== "8888") {
+      alert("Akses ditolak! Silakan login melalui Portal Staf di halaman utama.");
+      router.push("/");
+    } else {
+      setIsAuthorized(true);
+    }
+  }, [router]);
+
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <p className="text-zinc-500 font-extrabold uppercase tracking-widest text-xs animate-pulse">
+          Memverifikasi Otorisasi...
+        </p>
+      </div>
+    );
+  }
 
   // Helper to map DB columns to KDS state structure
   const mapDbOrderToKdsOrder = (dbOrder: any): Order => {

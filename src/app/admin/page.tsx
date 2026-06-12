@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Check, X, Bell, Database, ShoppingBag } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { formatRupiah } from "@/lib/constants";
@@ -42,9 +43,32 @@ const MOCK_PENDING_ORDERS: Order[] = [
 ];
 
 export default function AdminPage() {
+  const router = useRouter();
+  const [isAuthorized, setIsAuthorized] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [isMockMode, setIsMockMode] = useState(true);
   const [lastNotificationTime, setLastNotificationTime] = useState<number>(0);
+
+  // Check auth state
+  useEffect(() => {
+    const token = localStorage.getItem("sutra_staff_token");
+    if (token !== "8888") {
+      alert("Akses ditolak! Silakan login melalui Portal Staf di halaman utama.");
+      router.push("/");
+    } else {
+      setIsAuthorized(true);
+    }
+  }, [router]);
+
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
+        <p className="text-zinc-500 font-extrabold uppercase tracking-widest text-xs animate-pulse">
+          Memverifikasi Otorisasi...
+        </p>
+      </div>
+    );
+  }
 
   const mapDbOrderToKdsOrder = (dbOrder: any): Order => {
     const date = new Date(dbOrder.created_at);

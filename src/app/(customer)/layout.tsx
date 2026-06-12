@@ -1,7 +1,9 @@
 "use client";
 
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { ShoppingBag } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ShoppingBag, Lock, X } from "lucide-react";
 import { useCart } from "@/hooks/useCart";
 
 export default function CustomerLayout({
@@ -11,6 +13,52 @@ export default function CustomerLayout({
 }) {
   const { getTotalItems, toggleCart } = useCart();
   const totalItems = getTotalItems();
+  const router = useRouter();
+
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedRoute, setSelectedRoute] = useState<string>("");
+  const [pin, setPin] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [shouldShake, setShouldShake] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const handleOpenLogin = (route: string) => {
+    setSelectedRoute(route);
+    setIsDropdownOpen(false);
+    setPin("");
+    setErrorMsg("");
+    setShouldShake(false);
+    setIsModalOpen(true);
+  };
+
+  const handleSubmitPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pin === "8888") {
+      localStorage.setItem("sutra_staff_token", "8888");
+      setIsModalOpen(false);
+      router.push(selectedRoute);
+    } else {
+      setShouldShake(true);
+      setErrorMsg("Akses Ditolak. PIN Salah!");
+      setTimeout(() => {
+        setShouldShake(false);
+      }, 500);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-offwhite flex flex-col justify-between">
@@ -40,8 +88,39 @@ export default function CustomerLayout({
             <Link href="/contact" className="hover:text-gold transition-colors">LOKASI & KONTAK</Link>
           </nav>
 
-          {/* Cart Right */}
-          <div className="flex-shrink-0 flex items-center">
+          {/* Cart & Staff Portal Right */}
+          <div className="flex-shrink-0 flex items-center gap-4">
+            {/* Staff Portal Dropdown */}
+            <div className="relative" ref={dropdownRef}>
+              <button
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="p-2 text-charcoal hover:text-gold transition-colors flex items-center justify-center border border-zinc-200 hover:border-zinc-300 rounded-full bg-white shadow-xs"
+                title="Portal Staf"
+              >
+                <Lock size={18} strokeWidth={2.5} />
+              </button>
+
+              {isDropdownOpen && (
+                <div className="absolute right-0 mt-3 w-56 bg-white border border-zinc-150 rounded-2xl shadow-xl py-2 z-50">
+                  <div className="px-4 py-2 border-b border-zinc-100 mb-1">
+                    <p className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-widest">Portal Staf</p>
+                  </div>
+                  <button
+                    onClick={() => handleOpenLogin("/admin")}
+                    className="w-full text-left px-4 py-3 text-xs font-bold text-charcoal hover:bg-zinc-50 hover:text-gold transition-colors uppercase tracking-wider"
+                  >
+                    Dashboard Admin
+                  </button>
+                  <button
+                    onClick={() => handleOpenLogin("/dapur")}
+                    className="w-full text-left px-4 py-3 text-xs font-bold text-charcoal hover:bg-zinc-50 hover:text-gold transition-colors uppercase tracking-wider"
+                  >
+                    Monitor KDS Dapur
+                  </button>
+                </div>
+              )}
+            </div>
+
             <button 
               onClick={toggleCart}
               className="relative p-2 text-charcoal hover:text-gold transition-colors flex items-center gap-2"
@@ -98,6 +177,62 @@ export default function CustomerLayout({
           </div>
         </div>
       </footer>
+
+      {/* Password PIN Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 bg-charcoal/45 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className={`bg-white rounded-[2rem] max-w-sm w-full p-8 border border-zinc-150 shadow-2xl relative ${shouldShake ? 'animate-shake' : ''}`}>
+            <button 
+              onClick={() => setIsModalOpen(false)}
+              className="absolute top-6 right-6 text-zinc-400 hover:text-charcoal transition-colors p-1"
+            >
+              <X size={20} />
+            </button>
+            
+            <div className="text-center space-y-2 mb-6">
+              <div className="w-12 h-12 bg-gold/10 text-gold rounded-full flex items-center justify-center mx-auto">
+                <Lock size={22} />
+              </div>
+              <h3 className="text-xl font-black text-charcoal uppercase tracking-tight">Verifikasi PIN Staf</h3>
+              <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider">
+                Akses Terbatas ke {selectedRoute === "/admin" ? "Dashboard Admin" : "Monitor Dapur"}
+              </p>
+            </div>
+
+            <form onSubmit={handleSubmitPin} className="space-y-6">
+              <div className="space-y-2">
+                <input
+                  type="password"
+                  maxLength={4}
+                  value={pin}
+                  onChange={(e) => {
+                    setPin(e.target.value.replace(/\D/g, ""));
+                    if (errorMsg) setErrorMsg("");
+                  }}
+                  placeholder="••••"
+                  className={`w-full text-center text-3xl tracking-[0.5em] font-black py-4 border-b-2 bg-transparent focus:outline-none transition-all ${
+                    errorMsg ? "border-red-500 text-red-500 animate-pulse" : "border-zinc-300 focus:border-zinc-900 text-charcoal"
+                  }`}
+                  autoFocus
+                />
+                {errorMsg && (
+                  <p className="text-center text-xs font-bold text-red-500 uppercase tracking-wider animate-pulse pt-1">
+                    {errorMsg}
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                disabled={pin.length < 4}
+                className="w-full bg-charcoal hover:bg-gold text-white hover:text-charcoal font-black py-4 rounded-xl text-xs uppercase tracking-widest transition-all disabled:opacity-50 disabled:hover:bg-charcoal disabled:hover:text-white shadow-md"
+              >
+                Masuk Portal
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
