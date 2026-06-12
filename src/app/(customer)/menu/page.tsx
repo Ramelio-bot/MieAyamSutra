@@ -3,13 +3,17 @@
 import { MOCK_MENUS } from "@/lib/constants";
 import MenuCard from "@/components/customer/MenuCard";
 import CartSheet from "@/components/customer/CartSheet";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useCart } from "@/hooks/useCart";
 import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
+import { CheckCircle2, Loader2 } from "lucide-react";
 
 export default function MenuPage() {
   const { items, clearCart } = useCart();
+  const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -33,7 +37,8 @@ export default function MenuPage() {
         price: item.price,
         notes: item.notes || ""
       })),
-      total_amount: items.reduce((sum, item) => sum + (item.price * item.qty), 0)
+      total_amount: items.reduce((sum, item) => sum + (item.price * item.qty), 0),
+      status: "PENDING"
     };
 
     try {
@@ -42,19 +47,45 @@ export default function MenuPage() {
       if (error) {
         alert("Gagal mengirim pesanan: " + error.message);
       } else {
-        alert(`Pesanan berhasil dibuat untuk ${formData.name}!\nMohon tunggu di lokasi untuk pembayaran talangan JeggBoy.`);
         clearCart();
         setFormData({ name: "", phone: "", address: "" });
+        setShowSuccessModal(true);
       }
     } catch (err: any) {
-      alert("Error: " + err.message);
+      alert("Terjadi kesalahan jaringan: " + err.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Redirect to home after 3 seconds when success modal is shown
+  useEffect(() => {
+    if (showSuccessModal) {
+      const timer = setTimeout(() => {
+        router.push("/");
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showSuccessModal, router]);
+
   return (
-    <div className="py-16 md:py-24">
+    <div className="py-16 md:py-24 relative">
+      
+      {/* Success Modal */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-charcoal/80 backdrop-blur-md transition-opacity">
+          <div className="bg-white p-8 md:p-12 rounded-[2.5rem] shadow-2xl text-center max-w-md mx-4 transform scale-100 transition-transform duration-300 border border-zinc-100 flex flex-col items-center gap-6">
+            <CheckCircle2 className="text-green-500 w-20 h-20 animate-bounce" strokeWidth={1.5} />
+            <div className="space-y-2">
+              <h3 className="text-2xl font-black text-charcoal uppercase tracking-tighter">Pesanan Berhasil Dikirim!</h3>
+              <p className="text-zinc-500 text-sm leading-relaxed font-medium">
+                Driver Ojol Lokal akan segera menghubungi Anda. Halaman ini akan dialihkan secara otomatis...
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Menu Section */}
       <section className="container mx-auto px-4 lg:px-8">
         <div className="mb-20 text-center max-w-xl mx-auto space-y-4">
@@ -79,7 +110,7 @@ export default function MenuPage() {
           <div className="bg-white p-8 md:p-16 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.01)] border border-zinc-200/40">
             <div className="text-center mb-16 space-y-2">
               <h2 className="text-3xl md:text-4xl font-black text-charcoal tracking-tighter uppercase leading-none">Detail Pengiriman</h2>
-              <p className="text-zinc-400 text-xs font-bold uppercase tracking-wider">Formulir pemesanan langsung via kurir JeggBoy</p>
+              <p className="text-zinc-400 text-xs font-bold uppercase tracking-wider">Formulir pemesanan langsung via kurir Ojol</p>
             </div>
             
             <form onSubmit={handleSubmit} className="space-y-12">
@@ -144,9 +175,16 @@ export default function MenuPage() {
               <button 
                 type="submit"
                 disabled={items.length === 0 || isSubmitting}
-                className="w-full bg-charcoal text-white font-black py-5 rounded-full mt-4 hover:bg-gold transition-colors disabled:opacity-30 disabled:cursor-not-allowed uppercase tracking-widest text-xs shadow-lg shadow-charcoal/10"
+                className="w-full bg-charcoal text-white font-black py-5 rounded-full mt-4 hover:bg-gold transition-colors disabled:opacity-30 disabled:cursor-not-allowed uppercase tracking-widest text-xs shadow-lg shadow-charcoal/10 flex items-center justify-center gap-2"
               >
-                {isSubmitting ? "Mengirim..." : "Konfirmasi Pesanan"}
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="animate-spin w-4 h-4" />
+                    <span>Memproses Pesanan...</span>
+                  </>
+                ) : (
+                  <span>Konfirmasi Pesanan</span>
+                )}
               </button>
             </form>
           </div>

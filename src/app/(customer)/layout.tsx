@@ -90,6 +90,12 @@ export default function CustomerLayout({
           </div>
           
           <p className="mt-4 text-xs text-zinc-500">&copy; {new Date().getFullYear()} Mie Ayam Sutra. All rights reserved.</p>
+          
+          <div className="w-full py-4 mt-8 border-t border-zinc-850 text-center">
+            <p className="text-xs text-zinc-500 tracking-wide font-sans font-medium">
+              Incooperate with Myinvoice.Space | Powered by Digipro
+            </p>
+          </div>
         </div>
       </footer>
     </div>
