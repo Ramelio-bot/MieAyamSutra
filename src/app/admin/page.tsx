@@ -24,6 +24,7 @@ interface Order {
   items: OrderItem[];
   total_amount: number;
   status: "PENDING" | "PREPARING" | "COMPLETED" | "CANCELLED";
+  cancel_reason?: string;
 }
 
 const MOCK_PENDING_ORDERS: Order[] = [
@@ -98,6 +99,12 @@ export default function CommandCenterPage() {
   const [isMockMode, setIsMockMode] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   
+  // Rejection modal states
+  const [rejectingOrderId, setRejectingOrderId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [reportFilter, setReportFilter] = useState<"ALL" | "SUCCESS" | "CANCELLED">("ALL");
+  
   // Audio state (One-shot chime controls)
   const [isMuted, setIsMuted] = useState(false);
   const isMutedRef = useRef(isMuted);
@@ -110,6 +117,12 @@ export default function CommandCenterPage() {
   const mapDbOrderToKdsOrder = (dbOrder: any): Order => {
     const date = new Date(dbOrder.created_at);
     const timeStr = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")} WIB`;
+    
+    let cancelReasonVal = dbOrder.cancel_reason || "";
+    if (!cancelReasonVal && dbOrder.delivery_notes && dbOrder.delivery_notes.startsWith("Alasan Batal: ")) {
+      cancelReasonVal = dbOrder.delivery_notes.replace("Alasan Batal: ", "");
+    }
+
     return {
       id: dbOrder.id,
       shortId: dbOrder.id.substring(0, 4).toUpperCase(),
@@ -119,7 +132,8 @@ export default function CommandCenterPage() {
       delivery_address: dbOrder.delivery_address,
       total_amount: Number(dbOrder.total_amount),
       status: dbOrder.status,
-      items: dbOrder.items
+      items: dbOrder.items,
+      cancel_reason: cancelReasonVal
     };
   };
 
@@ -320,18 +334,39 @@ export default function CommandCenterPage() {
     }
   };
 
-  const handleCancel = async (id: string) => {
-    const targetOrder = orders.find(o => o.id === id);
+  const handleCancel = (id: string) => {
+    setRejectingOrderId(id);
+    setCancelReason("");
+    setIsCancelModalOpen(true);
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!rejectingOrderId) return;
+    const reason = cancelReason.trim() || "Tidak ada alasan spesifik";
+    const targetOrder = orders.find(o => o.id === rejectingOrderId);
+
     if (isMockMode) {
       if (targetOrder) {
-        const updated = { ...targetOrder, status: "CANCELLED" as const };
-        setOrders(prev => prev.filter(o => o.id !== id));
+        const updated = { ...targetOrder, status: "CANCELLED" as const, cancel_reason: reason };
+        setOrders(prev => prev.filter(o => o.id !== rejectingOrderId));
         setHistoryOrders(prev => [updated, ...prev]);
       }
     } else {
-      const { error } = await supabase.from("orders").update({ status: "CANCELLED" }).eq("id", id);
-      if (error) alert("Gagal mematalkan orderan: " + error.message);
+      const { error } = await supabase.from("orders").update({ status: "CANCELLED", cancel_reason: reason }).eq("id", rejectingOrderId);
+      if (error) {
+        // Fallback: write to delivery_notes if cancel_reason column doesn't exist
+        const fallbackError = await supabase.from("orders").update({ 
+          status: "CANCELLED", 
+          delivery_notes: `Alasan Batal: ${reason}` 
+        }).eq("id", rejectingOrderId);
+        if (fallbackError.error) {
+          alert("Gagal membatalkan orderan: " + fallbackError.error.message);
+        }
+      }
     }
+
+    setIsCancelModalOpen(false);
+    setRejectingOrderId(null);
   };
 
   const handleComplete = async (id: string) => {
@@ -718,9 +753,45 @@ No rekening dapat pilih salah satu :
 
             {/* History Table list */}
             <div className="bg-white rounded-[1.5rem] border border-zinc-200 shadow-xs overflow-hidden">
-              <div className="p-4 px-6 border-b border-zinc-250 flex justify-between items-center bg-white">
-                <h3 className="text-xs font-black text-zinc-700 uppercase tracking-widest">Daftar Transaksi Selesai</h3>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Total: {historyOrders.length} Pesanan</span>
+              <div className="p-4 px-6 border-b border-zinc-250 flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-white">
+                <div className="space-y-1">
+                  <h3 className="text-xs font-black text-zinc-700 uppercase tracking-widest">Daftar Transaksi Selesai</h3>
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">Total: {historyOrders.length} Pesanan</span>
+                </div>
+                
+                {/* Filter buttons */}
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    onClick={() => setReportFilter("ALL")}
+                    className={`px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-lg transition-colors border ${
+                      reportFilter === "ALL" 
+                        ? "bg-charcoal text-white border-charcoal" 
+                        : "bg-white text-zinc-500 border-zinc-200 hover:text-zinc-800"
+                    }`}
+                  >
+                    Semua ({historyOrders.length})
+                  </button>
+                  <button
+                    onClick={() => setReportFilter("SUCCESS")}
+                    className={`px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-lg transition-colors border ${
+                      reportFilter === "SUCCESS" 
+                        ? "bg-green-600 text-white border-green-600" 
+                        : "bg-white text-zinc-500 border-zinc-200 hover:text-green-650"
+                    }`}
+                  >
+                    Sukses ({historyOrders.filter(o => o.status === "COMPLETED").length})
+                  </button>
+                  <button
+                    onClick={() => setReportFilter("CANCELLED")}
+                    className={`px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-lg transition-colors border ${
+                      reportFilter === "CANCELLED" 
+                        ? "bg-red-600 text-white border-red-600" 
+                        : "bg-white text-zinc-500 border-zinc-200 hover:text-red-650"
+                    }`}
+                  >
+                    Batal ({historyOrders.filter(o => o.status === "CANCELLED").length})
+                  </button>
+                </div>
               </div>
 
               <div className="overflow-x-auto">
@@ -744,7 +815,13 @@ No rekening dapat pilih salah satu :
                         </td>
                       </tr>
                     ) : (
-                      historyOrders.map((order) => (
+                      historyOrders
+                        .filter((order) => {
+                          if (reportFilter === "SUCCESS") return order.status === "COMPLETED";
+                          if (reportFilter === "CANCELLED") return order.status === "CANCELLED";
+                          return true;
+                        })
+                        .map((order) => (
                         <tr key={order.id} className="hover:bg-zinc-50/50 transition-colors">
                           <td className="py-4 px-6 font-extrabold text-zinc-950">#{order.shortId}</td>
                           <td className="py-4 px-6 text-zinc-500">{order.time}</td>
@@ -773,9 +850,16 @@ No rekening dapat pilih salah satu :
                                 SUKSES
                               </span>
                             ) : (
-                              <span className="bg-red-50 text-red-700 border border-red-200 text-[9px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider">
-                                BATAL
-                              </span>
+                              <div className="flex flex-col items-center gap-1.5">
+                                <span className="bg-red-50 text-red-700 border border-red-200 text-[9px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider">
+                                  BATAL
+                                </span>
+                                {order.cancel_reason && (
+                                  <span className="text-[10px] text-red-500 font-extrabold max-w-[150px] truncate" title={order.cancel_reason}>
+                                    {order.cancel_reason}
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -796,6 +880,63 @@ No rekening dapat pilih salah satu :
         Incooperate with Myinvoice.Space | Powered by Digipro
       </footer>
 
+      {/* Rejection Reason Modal */}
+      {isCancelModalOpen && (
+        <div className="fixed inset-0 z-50 bg-charcoal/45 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] max-w-sm w-full p-8 border border-zinc-150 shadow-2xl relative">
+            <button 
+              onClick={() => {
+                setIsCancelModalOpen(false);
+                setRejectingOrderId(null);
+              }}
+              className="absolute top-6 right-6 text-zinc-400 hover:text-charcoal transition-colors p-1"
+            >
+              <X size={20} />
+            </button>
+            
+            <div className="text-center space-y-2 mb-6">
+              <div className="w-12 h-12 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto border border-red-100">
+                <X size={22} />
+              </div>
+              <h3 className="text-xl font-black text-charcoal uppercase tracking-tight">Tolak Pesanan</h3>
+              <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider">
+                Berikan alasan mengapa pesanan ini ditolak
+              </p>
+            </div>
+
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <textarea
+                  placeholder="Contoh: Stok bahan mie ayam habis, sedang ramai sekali, kurir tidak tersedia, dll."
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  className="w-full min-h-[100px] p-3 text-xs font-semibold border-2 border-zinc-200 focus:border-zinc-950 rounded-xl focus:outline-none transition-all resize-none animate-fade-in"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleConfirmCancel}
+                  disabled={!cancelReason.trim()}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white font-black py-3.5 rounded-xl text-xs uppercase tracking-widest transition-all disabled:opacity-50 shadow-md"
+                >
+                  Tolak Pesanan
+                </button>
+                <button
+                  onClick={() => {
+                    setIsCancelModalOpen(false);
+                    setRejectingOrderId(null);
+                  }}
+                  className="px-4 py-3.5 border border-zinc-200 hover:bg-zinc-50 rounded-xl text-xs font-bold text-zinc-550 transition-colors uppercase tracking-wider"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
