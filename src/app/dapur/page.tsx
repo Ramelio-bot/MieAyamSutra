@@ -56,12 +56,14 @@ export default function KDSPage() {
 
   // Check auth state
   useEffect(() => {
-    const token = localStorage.getItem("sutra_staff_token");
-    if (token !== "8888") {
-      alert("Akses ditolak! Silakan login melalui Portal Staf di halaman utama.");
-      router.push("/");
-    } else {
-      setIsAuthorized(true);
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem("sutra_staff_token");
+      if (token !== "8888") {
+        alert("Akses ditolak! Silakan login melalui Portal Staf di halaman utama.");
+        router.push("/");
+      } else {
+        setIsAuthorized(true);
+      }
     }
   }, [router]);
 
@@ -97,6 +99,7 @@ export default function KDSPage() {
     if (isAlerting) return;
     setIsAlerting(true);
 
+    if (typeof window === "undefined") return;
     if (!audioCtxRef.current) {
       audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }

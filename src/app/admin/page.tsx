@@ -51,12 +51,14 @@ export default function AdminPage() {
 
   // Check auth state
   useEffect(() => {
-    const token = localStorage.getItem("sutra_staff_token");
-    if (token !== "8888") {
-      alert("Akses ditolak! Silakan login melalui Portal Staf di halaman utama.");
-      router.push("/");
-    } else {
-      setIsAuthorized(true);
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem("sutra_staff_token");
+      if (token !== "8888") {
+        alert("Akses ditolak! Silakan login melalui Portal Staf di halaman utama.");
+        router.push("/");
+      } else {
+        setIsAuthorized(true);
+      }
     }
   }, [router]);
 
@@ -89,6 +91,7 @@ export default function AdminPage() {
   // Sound Synthesizer: Subtle notification chime (Double high-pitch beep)
   const playSubtleChime = () => {
     try {
+      if (typeof window === "undefined") return;
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const now = audioCtx.currentTime;
       const tones = [987.77, 1318.51]; // B5 and E6 (friendly notification)

@@ -25,6 +25,8 @@ export default function CustomerLayout({
 
   // Close dropdown on click outside
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsDropdownOpen(false);
@@ -48,7 +50,9 @@ export default function CustomerLayout({
   const handleSubmitPin = (e: React.FormEvent) => {
     e.preventDefault();
     if (pin === "8888") {
-      localStorage.setItem("sutra_staff_token", "8888");
+      if (typeof window !== "undefined") {
+        localStorage.setItem("sutra_staff_token", "8888");
+      }
       setIsModalOpen(false);
       router.push(selectedRoute);
     } else {
