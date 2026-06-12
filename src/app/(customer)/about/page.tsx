@@ -72,15 +72,15 @@ export default function AboutPage() {
           </div>
         </section>
 
-        {/* Visual Map Placeholder pointing precisely to Pusat Kuliner Kridanggo */}
-        <div className="w-full aspect-[21/9] bg-zinc-100 rounded-[2rem] border border-zinc-200/50 shadow-sm mt-16 overflow-hidden flex flex-col items-center justify-center relative">
-          <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{
-            backgroundImage: "radial-gradient(circle, #000 10%, transparent 11%)",
-            backgroundSize: "20px 20px"
-          }} />
-          <MapPin className="text-gold mb-2" size={32} />
-          <span className="text-charcoal font-black uppercase tracking-wider text-sm">Pusat Kuliner Kridanggo Salatiga</span>
-          <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest mt-1">Google Maps Location Pin 📍</span>
+        {/* Visual Map - Live Google Maps Embed pointing precisely to Pusat Kuliner Kridanggo */}
+        <div className="w-full mt-16 overflow-hidden rounded-[2rem] border border-zinc-200/50 shadow-sm">
+          <iframe
+            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3956.786536968032!2d110.49754667587834!3d-7.327743772064115!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e7a79fe0a90c32f%3A0xcc80cbfa9919234f!2sPusat%20Kuliner%20PKL%20Kridanggo!5e0!3m2!1sid!2sid!4v1718198765432!5m2!1sid!2sid"
+            className="w-full h-[350px] border-0"
+            allowFullScreen={true}
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+          ></iframe>
         </div>
 
         {/* Brand Contacts */}

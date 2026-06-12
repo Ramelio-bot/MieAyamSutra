@@ -93,12 +93,12 @@ export default function ContactPage() {
 
                 <div className="pt-2">
                   <a 
-                    href="https://wa.me/628123456789" 
+                    href="https://wa.me/6282225224961?text=Halo%20Mie%20Ayam%20Sutra%2C%20saya%20mau%20tanya%20mengenai%20pesanan%20saya" 
                     target="_blank" 
                     rel="noopener noreferrer" 
                     className="inline-flex items-center gap-2 text-charcoal font-black border-b-2 border-charcoal pb-0.5 hover:text-gold hover:border-gold transition-colors text-sm uppercase tracking-wider"
                   >
-                    Hubungi WhatsApp <ArrowRight size={16} />
+                    Hubungi WhatsApp (082225224961) <ArrowRight size={16} />
                   </a>
                 </div>
               </div>
@@ -106,21 +106,15 @@ export default function ContactPage() {
 
           </div>
 
-          {/* Maps Embed Placeholder */}
-          <div className="w-full aspect-square bg-zinc-100 rounded-[2.5rem] overflow-hidden border border-zinc-200/50 shadow-sm relative flex items-center justify-center">
-            {/* Design Grid Pattern */}
-            <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{
-              backgroundImage: "radial-gradient(circle, #000 10%, transparent 11%)",
-              backgroundSize: "20px 20px"
-            }} />
-            <div className="text-center z-10 space-y-2">
-              <MapPin className="text-gold mx-auto" size={40} />
-              <span className="text-charcoal font-black uppercase tracking-wider text-sm block">Pusat Kuliner Kridanggo</span>
-              <span className="text-zinc-400 font-extrabold uppercase tracking-widest text-xs block">Google Maps Location 📍</span>
-              <p className="text-zinc-400 text-xs px-12 max-w-sm font-medium">
-                Kec. Sidorejo, Kota Salatiga, Jawa Tengah 50724
-              </p>
-            </div>
+          {/* Maps Embed - Real Google Maps Iframe */}
+          <div className="w-full aspect-square bg-zinc-100 rounded-[2.5rem] overflow-hidden border border-zinc-200/50 shadow-sm relative">
+            <iframe
+              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3956.786536968032!2d110.49754667587834!3d-7.327743772064115!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e7a79fe0a90c32f%3A0xcc80cbfa9919234f!2sPusat%20Kuliner%20PKL%20Kridanggo!5e0!3m2!1sid!2sid!4v1718198765432!5m2!1sid!2sid"
+              className="w-full h-full border-0"
+              allowFullScreen={true}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            ></iframe>
           </div>
         </div>
       </div>
