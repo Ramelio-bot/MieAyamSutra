@@ -23,8 +23,9 @@ interface Order {
   delivery_address: string;
   items: OrderItem[];
   total_amount: number;
-  status: "PENDING" | "PREPARING" | "COMPLETED" | "CANCELLED";
+  status: "PENDING" | "PREPARING" | "WAITING_PICKUP" | "PICKED_UP" | "CANCELLED";
   cancel_reason?: string;
+  created_at?: string;
 }
 
 const MOCK_PENDING_ORDERS: Order[] = [
@@ -70,7 +71,8 @@ const MOCK_HISTORY_ORDERS: Order[] = [
     customer_phone: "08129876543",
     delivery_address: "Kost Argomulyo Raya No 5, Salatiga",
     total_amount: 19000,
-    status: "COMPLETED",
+    status: "PICKED_UP",
+    created_at: new Date().toISOString(),
     items: [
       { name: "Mie Ayam Pangsit", qty: 1, price: 19000 }
     ]
@@ -84,6 +86,7 @@ const MOCK_HISTORY_ORDERS: Order[] = [
     delivery_address: "Jl. Diponegoro No 12, Salatiga",
     total_amount: 30000,
     status: "CANCELLED",
+    created_at: new Date().toISOString(),
     items: [
       { name: "Mie Ayam Biasa", qty: 2, price: 15000 }
     ]
@@ -93,7 +96,7 @@ const MOCK_HISTORY_ORDERS: Order[] = [
 export default function CommandCenterPage() {
   const router = useRouter();
   const [isAuthorized, setIsAuthorized] = useState(false);
-  const [activeTab, setActiveTab] = useState<"monitor" | "laporan">("monitor");
+  const [activeTab, setActiveTab] = useState<"monitor" | "pickup" | "laporan">("monitor");
   const [orders, setOrders] = useState<Order[]>([]);
   const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
   const [isMockMode, setIsMockMode] = useState(true);
@@ -112,6 +115,15 @@ export default function CommandCenterPage() {
   useEffect(() => {
     isMutedRef.current = isMuted;
   }, [isMuted]);
+
+  const isToday = (dateStr?: string) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    const today = new Date();
+    return d.getDate() === today.getDate() &&
+           d.getMonth() === today.getMonth() &&
+           d.getFullYear() === today.getFullYear();
+  };
 
   // Helper to map DB row to State structure
   const mapDbOrderToKdsOrder = (dbOrder: any): Order => {
@@ -133,7 +145,8 @@ export default function CommandCenterPage() {
       total_amount: Number(dbOrder.total_amount),
       status: dbOrder.status,
       items: dbOrder.items,
-      cancel_reason: cancelReasonVal
+      cancel_reason: cancelReasonVal,
+      created_at: dbOrder.created_at
     };
   };
 
@@ -195,12 +208,12 @@ export default function CommandCenterPage() {
       return;
     }
 
-    // Fetch initial active pending & preparing orders
+    // Fetch initial active pending, preparing & waiting_pickup orders
     const fetchOrders = async () => {
       const { data, error } = await supabase
         .from("orders")
         .select("*")
-        .in("status", ["PENDING", "PREPARING"])
+        .in("status", ["PENDING", "PREPARING", "WAITING_PICKUP"])
         .order("created_at", { ascending: false });
       
       if (!error && data) {
@@ -213,7 +226,7 @@ export default function CommandCenterPage() {
       const { data, error } = await supabase
         .from("orders")
         .select("*")
-        .in("status", ["COMPLETED", "CANCELLED"])
+        .in("status", ["PICKED_UP", "CANCELLED"])
         .order("created_at", { ascending: false });
       
       if (!error && data) {
@@ -232,12 +245,12 @@ export default function CommandCenterPage() {
         { event: "INSERT", schema: "public", table: "orders" },
         (payload) => {
           const newOrder = mapDbOrderToKdsOrder(payload.new);
-          if (newOrder.status === "PENDING" || newOrder.status === "PREPARING") {
+          if (newOrder.status === "PENDING" || newOrder.status === "PREPARING" || newOrder.status === "WAITING_PICKUP") {
             setOrders(prev => [newOrder, ...prev]);
             if (newOrder.status === "PENDING" && !isMutedRef.current) {
               playSubtleChime();
             }
-          } else if (newOrder.status === "COMPLETED" || newOrder.status === "CANCELLED") {
+          } else if (newOrder.status === "PICKED_UP" || newOrder.status === "CANCELLED") {
             setHistoryOrders(prev => [newOrder, ...prev]);
           }
         }
@@ -247,7 +260,7 @@ export default function CommandCenterPage() {
         { event: "UPDATE", schema: "public", table: "orders" },
         (payload) => {
           const updatedOrder = mapDbOrderToKdsOrder(payload.new);
-          if (updatedOrder.status === "PENDING" || updatedOrder.status === "PREPARING") {
+          if (updatedOrder.status === "PENDING" || updatedOrder.status === "PREPARING" || updatedOrder.status === "WAITING_PICKUP") {
             setOrders(prev => {
               const exists = prev.some(o => o.id === updatedOrder.id);
               if (exists) {
@@ -259,7 +272,7 @@ export default function CommandCenterPage() {
             // If moved back, remove from history
             setHistoryOrders(prev => prev.filter(o => o.id !== updatedOrder.id));
           } else {
-            // COMPLETED or CANCELLED: remove from active and add to history
+            // PICKED_UP or CANCELLED: remove from active and add to history
             setOrders(prev => prev.filter(o => o.id !== updatedOrder.id));
             setHistoryOrders(prev => {
               const exists = prev.some(o => o.id === updatedOrder.id);
@@ -280,8 +293,8 @@ export default function CommandCenterPage() {
   }, [isAuthorized]);
 
   // Simulator
-  const handleSimulateOrder = async (targetStatus: "PENDING" | "PREPARING") => {
-    const nextId = (targetStatus === "PENDING" ? 2000 : 1000) + orders.length + 1;
+  const handleSimulateOrder = async (targetStatus: "PENDING" | "PREPARING" | "WAITING_PICKUP") => {
+    const nextId = (targetStatus === "PENDING" ? 2000 : (targetStatus === "PREPARING" ? 1000 : 3000)) + orders.length + 1;
     const now = new Date();
     const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")} WIB`;
 
@@ -293,17 +306,23 @@ export default function CommandCenterPage() {
         "Kos Puteri Kemuning No.18, Sidorejo, Salatiga",
         "Jl. Argoboga No.8, Argomulyo, Salatiga"
       ][Math.floor(Math.random() * 3)],
-      total_amount: targetStatus === "PENDING" ? 35000 : 45000,
+      total_amount: targetStatus === "PENDING" ? 35000 : (targetStatus === "PREPARING" ? 45000 : 23000),
       status: targetStatus,
       items: targetStatus === "PENDING" 
         ? [
             { name: "Mie Ayam Biasa", qty: 1, price: 15000, notes: "Sayur sawi banyakin" },
             { name: "Mie Ayam Bakso", qty: 1, price: 20000 }
           ]
-        : [
+        : targetStatus === "PREPARING"
+        ? [
             { name: "Mie Ayam Komplit Sutra", qty: 1, price: 25000, notes: "Kuah dipisah" },
             { name: "Es Jeruk Peras", qty: 1, price: 6000 },
             { name: "Es Teh Manis", qty: 2, price: 4000 }
+          ]
+        : [
+            { name: "Mie Ayam Biasa", qty: 1, price: 15000, notes: "Ojol langsung gas" },
+            { name: "Es Jeruk Peras", qty: 1, price: 6000 },
+            { name: "Es Teh Manis", qty: 1, price: 4000 }
           ]
     };
 
@@ -312,6 +331,7 @@ export default function CommandCenterPage() {
         id: `ord-${nextId}`,
         shortId: String(nextId),
         time: timeStr,
+        created_at: now.toISOString(),
         ...mockOrderData
       };
       setOrders(prev => [newOrder, ...prev]);
@@ -373,13 +393,26 @@ export default function CommandCenterPage() {
     const targetOrder = orders.find(o => o.id === id);
     if (isMockMode) {
       if (targetOrder) {
-        const updated = { ...targetOrder, status: "COMPLETED" as const };
+        const updated = { ...targetOrder, status: "WAITING_PICKUP" as const };
+        setOrders(prev => prev.map(o => o.id === id ? updated : o));
+      }
+    } else {
+      const { error } = await supabase.from("orders").update({ status: "WAITING_PICKUP" }).eq("id", id);
+      if (error) alert("Gagal menyelesaikan pesanan: " + error.message);
+    }
+  };
+
+  const handleConfirmPickup = async (id: string) => {
+    const targetOrder = orders.find(o => o.id === id);
+    if (isMockMode) {
+      if (targetOrder) {
+        const updated = { ...targetOrder, status: "PICKED_UP" as const };
         setOrders(prev => prev.filter(o => o.id !== id));
         setHistoryOrders(prev => [updated, ...prev]);
       }
     } else {
-      const { error } = await supabase.from("orders").update({ status: "COMPLETED" }).eq("id", id);
-      if (error) alert("Gagal menyelesaikan pesanan: " + error.message);
+      const { error } = await supabase.from("orders").update({ status: "PICKED_UP" }).eq("id", id);
+      if (error) alert("Gagal mengkonfirmasi pickup: " + error.message);
     }
   };
 
@@ -395,7 +428,7 @@ Nama toko : Mie Ayam Sutra (Pusat Kuliner Kridanggo, Salatiga)
 
 Nama barang dan jumlahnya:
 ${itemsText}
-Total Belanja (Wajib Ditalangi): Rp ${order.total_amount.toLocaleString('id-ID')}
+Total Belanja (Cash): Rp ${order.total_amount.toLocaleString('id-ID')}
 
 Alamat antar : ${order.delivery_address}
 
@@ -437,12 +470,14 @@ No rekening dapat pilih salah satu :
   const preparingOrders = orders.filter(o => o.status === "PREPARING");
 
   // Report calculations
+  const pickedUpTodayOrders = historyOrders.filter(o => o.status === "PICKED_UP" && isToday(o.created_at));
+
   const totalOmzet = historyOrders
-    .filter(o => o.status === "COMPLETED")
+    .filter(o => o.status === "PICKED_UP")
     .reduce((sum, o) => sum + o.total_amount, 0);
 
   const totalPorsi = historyOrders
-    .filter(o => o.status === "COMPLETED")
+    .filter(o => o.status === "PICKED_UP")
     .reduce((sum, o) => {
       return sum + o.items
         .filter(item => item.name.toLowerCase().includes("mie"))
@@ -495,13 +530,19 @@ No rekening dapat pilih salah satu :
             onClick={() => handleSimulateOrder("PENDING")}
             className="bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-all border border-zinc-200"
           >
-            + Simulasi Order Pending
+            + Simulasi Pending
           </button>
           <button 
             onClick={() => handleSimulateOrder("PREPARING")}
             className="bg-gold hover:bg-yellow-500 text-charcoal font-black px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-all shadow-sm"
           >
-            + Simulasi Order Dapur
+            + Simulasi Dapur
+          </button>
+          <button 
+            onClick={() => handleSimulateOrder("WAITING_PICKUP")}
+            className="bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-all border border-zinc-200"
+          >
+            + Simulasi Ready
           </button>
         </div>
       </header>
@@ -516,7 +557,17 @@ No rekening dapat pilih salah satu :
               : "border-transparent text-zinc-400 hover:text-zinc-650"
           }`}
         >
-          Monitor Operasional ({orders.length})
+          Monitor Operasional ({orders.filter(o => o.status === "PENDING" || o.status === "PREPARING").length})
+        </button>
+        <button
+          onClick={() => setActiveTab("pickup")}
+          className={`py-3.5 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all ${
+            activeTab === "pickup"
+              ? "border-charcoal text-charcoal"
+              : "border-transparent text-zinc-400 hover:text-zinc-650"
+          }`}
+        >
+          Status Pickup Driver ({orders.filter(o => o.status === "WAITING_PICKUP").length})
         </button>
         <button
           onClick={() => setActiveTab("laporan")}
@@ -706,6 +757,144 @@ No rekening dapat pilih salah satu :
             </section>
             
           </div>
+        ) : activeTab === "pickup" ? (
+          /* STATUS PICKUP DRIVER TAB: Split screen / dual columns */
+          <div className="h-full flex overflow-hidden">
+            
+            {/* LEFT COLUMN: Belum di-Pickup */}
+            <section className="w-1/2 bg-zinc-50 border-r border-zinc-200 flex flex-col h-full overflow-hidden">
+              <div className="p-4 px-6 border-b border-zinc-200 flex justify-between items-center bg-white shrink-0">
+                <h2 className="text-sm font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                  <span>Belum di-Pickup</span>
+                  <span className="bg-amber-100 text-amber-800 border border-amber-200 text-[10px] px-2 py-0.5 rounded-md font-extrabold">
+                    {orders.filter(o => o.status === "WAITING_PICKUP").length}
+                  </span>
+                </h2>
+                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Menunggu Driver</span>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {orders.filter(o => o.status === "WAITING_PICKUP").length === 0 ? (
+                  <div className="h-64 flex flex-col items-center justify-center text-zinc-400 space-y-3">
+                    <span className="text-3xl">🛵</span>
+                    <p className="text-xs font-bold tracking-widest uppercase">Tidak ada pesanan siap di-pickup</p>
+                  </div>
+                ) : (
+                  orders.filter(o => o.status === "WAITING_PICKUP").map((order) => (
+                    <div 
+                      key={order.id}
+                      className="bg-white rounded-[1.5rem] border border-zinc-200 shadow-xs flex flex-col justify-between overflow-hidden"
+                    >
+                      <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/40">
+                        <h3 className="text-lg font-black text-zinc-800">#{order.shortId}</h3>
+                        <span className="bg-zinc-200 text-zinc-650 text-[9px] font-extrabold px-1.5 py-0.5 rounded tracking-wide">
+                          {order.time}
+                        </span>
+                      </div>
+
+                      <div className="p-4 space-y-4 text-xs">
+                        <div className="space-y-2.5">
+                          {order.items.map((item, idx) => (
+                            <div key={idx} className="flex items-start gap-2 pb-2 border-b border-zinc-100/50 last:border-0 last:pb-0">
+                              <span className="font-extrabold text-gold">{item.qty}x</span>
+                              <div className="flex-1">
+                                <span className="font-bold text-zinc-800 uppercase tracking-tight block">{item.name}</span>
+                                {item.notes && <span className="text-[10px] font-bold text-zinc-400 block italic">Catatan: {item.notes}</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="pt-3 border-t border-zinc-100 space-y-1.5 text-zinc-600">
+                          <div>
+                            <span className="text-[9px] font-bold uppercase text-zinc-400 block tracking-wider">Konsumen</span>
+                            <span className="font-extrabold text-zinc-750 uppercase">{order.customer_name} ({order.customer_phone})</span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-bold uppercase text-zinc-400 block tracking-wider">Alamat Kirim</span>
+                            <span className="font-semibold text-zinc-500 leading-normal">{order.delivery_address}</span>
+                          </div>
+                          <div className="flex justify-between items-center pt-2">
+                            <span className="text-[10px] font-extrabold text-zinc-700 uppercase">Total Harga</span>
+                            <span className="font-black text-sm text-zinc-900">{formatRupiah(order.total_amount)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-zinc-50/50 border-t border-zinc-100 flex gap-2">
+                        <button 
+                          onClick={() => handleConfirmPickup(order.id)}
+                          className="flex-1 bg-green-600 hover:bg-green-700 text-white font-black py-2.5 rounded-lg text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-1 shadow-xs"
+                        >
+                          ✓ Konfirmasi Pickup
+                        </button>
+                        <button 
+                          onClick={() => copyToJeggBoy(order)}
+                          className="bg-transparent hover:bg-zinc-100 text-zinc-650 border border-zinc-200 font-bold py-2.5 px-3 rounded-lg text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
+                        >
+                          {copiedId === order.id ? "Disalin!" : "Format Ojol"}
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+
+            {/* RIGHT COLUMN: Sudah di-Pickup */}
+            <section className="w-1/2 bg-white flex flex-col h-full overflow-hidden">
+              <div className="p-4 px-6 border-b border-zinc-200 flex justify-between items-center bg-zinc-50/30 shrink-0">
+                <h2 className="text-sm font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                  <span>Sudah di-Pickup</span>
+                  <span className="bg-green-100 text-green-800 border border-green-200 text-[10px] px-2 py-0.5 rounded-md font-extrabold">
+                    {pickedUpTodayOrders.length}
+                  </span>
+                </h2>
+                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Hari Ini</span>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                {pickedUpTodayOrders.length === 0 ? (
+                  <div className="h-64 flex flex-col items-center justify-center text-zinc-400 space-y-3">
+                    <Check className="text-green-500 w-9 h-9" strokeWidth={1.5} />
+                    <p className="text-xs font-bold tracking-widest uppercase">Belum ada order diambil hari ini</p>
+                  </div>
+                ) : (
+                  pickedUpTodayOrders.map((order) => (
+                    <div 
+                      key={order.id}
+                      className="bg-green-50/10 border border-zinc-200 rounded-2xl p-4 flex items-center justify-between"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-zinc-900 text-sm">#{order.shortId}</span>
+                          <span className="bg-green-50 text-green-700 border border-green-200 text-[8px] px-2 py-0.5 rounded font-extrabold tracking-wide uppercase">
+                            DIAMBIL
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-zinc-500 font-medium">
+                          {order.customer_name} • {order.time}
+                        </p>
+                        <p className="text-[10px] text-zinc-400 max-w-[280px] truncate">
+                          {order.delivery_address}
+                        </p>
+                      </div>
+
+                      <div className="text-right space-y-1">
+                        <span className="font-extrabold text-zinc-900 text-xs block">
+                          {formatRupiah(order.total_amount)}
+                        </span>
+                        <span className="text-[9px] text-zinc-400 font-semibold block">
+                          {order.items.reduce((sum, item) => sum + item.qty, 0)} Porsi
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+            
+          </div>
         ) : (
           /* LAPORAN TAB: Historical data table and aggregates */
           <div className="h-full overflow-y-auto p-8 bg-zinc-50 space-y-8">
@@ -779,7 +968,7 @@ No rekening dapat pilih salah satu :
                         : "bg-white text-zinc-500 border-zinc-200 hover:text-green-600"
                     }`}
                   >
-                    Sukses ({historyOrders.filter(o => o.status === "COMPLETED").length})
+                    Sukses ({historyOrders.filter(o => o.status === "PICKED_UP").length})
                   </button>
                   <button
                     onClick={() => setReportFilter("CANCELLED")}
@@ -817,7 +1006,7 @@ No rekening dapat pilih salah satu :
                     ) : (
                       historyOrders
                         .filter((order) => {
-                          if (reportFilter === "SUCCESS") return order.status === "COMPLETED";
+                          if (reportFilter === "SUCCESS") return order.status === "PICKED_UP";
                           if (reportFilter === "CANCELLED") return order.status === "CANCELLED";
                           return true;
                         })
@@ -845,7 +1034,7 @@ No rekening dapat pilih salah satu :
                             {formatRupiah(order.total_amount)}
                           </td>
                           <td className="py-4 px-6 text-center">
-                            {order.status === "COMPLETED" ? (
+                            {order.status === "PICKED_UP" ? (
                               <span className="bg-green-50 text-green-700 border border-green-200 text-[9px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider">
                                 SUKSES
                               </span>
