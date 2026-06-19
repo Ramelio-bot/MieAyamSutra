@@ -8,6 +8,7 @@ interface MenuState {
   toggleAvailability: (id: string) => void;
   deleteMenu: (id: string) => void;
   resetMenus: () => void;
+  updateMenuImage: (id: string, imageUrl: string) => void;
 }
 
 export const useMenu = create<MenuState>((set) => {
@@ -63,6 +64,17 @@ export const useMenu = create<MenuState>((set) => {
           localStorage.removeItem('sutra_menus');
         }
         return { menus: MOCK_MENUS };
+      });
+    },
+    updateMenuImage: (id, imageUrl) => {
+      set((state) => {
+        const newMenus = state.menus.map(item => 
+          item.id === id ? { ...item, image_url: imageUrl } : item
+        );
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('sutra_menus', JSON.stringify(newMenus));
+        }
+        return { menus: newMenus };
       });
     }
   };

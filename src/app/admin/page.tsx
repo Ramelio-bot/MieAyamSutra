@@ -123,7 +123,7 @@ export default function CommandCenterPage() {
   const [reportFilter, setReportFilter] = useState<"ALL" | "SUCCESS" | "CANCELLED">("ALL");
   
   // Menu Management states
-  const { menus, addMenu, toggleAvailability, deleteMenu, resetMenus } = useMenu();
+  const { menus, addMenu, toggleAvailability, deleteMenu, resetMenus, updateMenuImage } = useMenu();
   const [kelolaCategoryFilter, setKelolaCategoryFilter] = useState<string>("ALL");
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [menuForm, setMenuForm] = useState({
@@ -469,6 +469,28 @@ export default function CommandCenterPage() {
       const base64String = reader.result as string;
       setImagePreview(base64String);
       setMenuForm(prev => ({ ...prev, image: base64String }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleProductImageChange = (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Format file harus berupa gambar (JPG, PNG, dll.)");
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert("Ukuran gambar maksimal 2MB");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      updateMenuImage(id, base64String);
     };
     reader.readAsDataURL(file);
   };
@@ -1071,17 +1093,33 @@ No rekening dapat pilih salah satu :
                             
                             {/* Foto */}
                             <td className="py-4 px-6">
-                              {menu.image_url ? (
-                                <img 
-                                  src={menu.image_url} 
-                                  alt={menu.name}
-                                  className="w-12 h-12 object-cover rounded-xl border border-zinc-150"
-                                />
-                              ) : (
-                                <div className="w-12 h-12 rounded-xl border border-zinc-200 bg-zinc-50 flex items-center justify-center text-zinc-450 font-bold text-lg">
-                                  {menu.category === "Minuman" ? "🍹" : (menu.category === "Camilan" ? "🍟" : "🍲")}
+                              <div 
+                                onClick={() => document.getElementById(`file-input-${menu.id}`)?.click()}
+                                className="relative w-12 h-12 rounded-xl border border-zinc-200 bg-zinc-50 overflow-hidden cursor-pointer group hover:border-charcoal transition-all shadow-xs flex-shrink-0"
+                                title="Klik untuk ubah foto"
+                              >
+                                {menu.image_url ? (
+                                  <img 
+                                    src={menu.image_url} 
+                                    alt={menu.name}
+                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-zinc-450 font-bold text-lg group-hover:scale-105 transition-transform duration-300">
+                                    {menu.category === "Minuman" ? "🍹" : (menu.category === "Camilan" ? "🍟" : "🍲")}
+                                  </div>
+                                )}
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[8px] font-black uppercase tracking-wider text-center p-0.5 leading-tight">
+                                  Ganti Foto
                                 </div>
-                              )}
+                              </div>
+                              <input
+                                type="file"
+                                id={`file-input-${menu.id}`}
+                                className="hidden"
+                                accept="image/*"
+                                onChange={(e) => handleProductImageChange(menu.id, e)}
+                              />
                             </td>
 
                             {/* Nama & Deskripsi */}
@@ -1118,19 +1156,28 @@ No rekening dapat pilih salah satu :
                               </button>
                             </td>
 
-                            {/* Aksi Delete */}
+                            {/* Aksi Delete & Photo */}
                             <td className="py-4 px-6 text-center">
-                              <button 
-                                onClick={() => {
-                                  if (confirm(`Hapus menu "${menu.name}"?`)) {
-                                    deleteMenu(menu.id);
-                                  }
-                                }}
-                                className="p-2 text-zinc-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors mx-auto block"
-                                title="Hapus Menu"
-                              >
-                                <Trash2 size={16} />
-                              </button>
+                              <div className="flex items-center justify-center gap-1 mx-auto">
+                                <button
+                                  onClick={() => document.getElementById(`file-input-${menu.id}`)?.click()}
+                                  className="p-2 text-zinc-400 hover:text-charcoal rounded-lg hover:bg-zinc-100 transition-colors"
+                                  title="Ubah Foto"
+                                >
+                                  <ImageIcon size={16} />
+                                </button>
+                                <button 
+                                  onClick={() => {
+                                    if (confirm(`Hapus menu "${menu.name}"?`)) {
+                                      deleteMenu(menu.id);
+                                    }
+                                  }}
+                                  className="p-2 text-zinc-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                                  title="Hapus Menu"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
                             </td>
 
                           </tr>
