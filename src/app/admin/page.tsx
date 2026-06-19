@@ -3,9 +3,10 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, X, Bell, BellOff, Database, ShoppingBag, Copy, ArrowLeft } from "lucide-react";
+import { Check, X, Bell, BellOff, Database, ShoppingBag, Copy, ArrowLeft, Trash2, ImageIcon, Plus, RefreshCw } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { formatRupiah } from "@/lib/constants";
+import { useMenu } from "@/hooks/useMenu";
 
 interface OrderItem {
   name: string;
@@ -26,6 +27,19 @@ interface Order {
   status: "PENDING" | "PREPARING" | "WAITING_PICKUP" | "PICKED_UP" | "CANCELLED";
   cancel_reason?: string;
   created_at?: string;
+}
+
+interface DbOrder {
+  id: string;
+  customer_name: string;
+  customer_phone: string;
+  delivery_address: string;
+  total_amount: number;
+  status: Order["status"];
+  items: OrderItem[];
+  cancel_reason?: string;
+  delivery_notes?: string;
+  created_at: string;
 }
 
 const MOCK_PENDING_ORDERS: Order[] = [
@@ -96,7 +110,7 @@ const MOCK_HISTORY_ORDERS: Order[] = [
 export default function CommandCenterPage() {
   const router = useRouter();
   const [isAuthorized, setIsAuthorized] = useState(false);
-  const [activeTab, setActiveTab] = useState<"monitor" | "pickup" | "laporan">("monitor");
+  const [activeTab, setActiveTab] = useState<"monitor" | "pickup" | "laporan" | "kelola">("monitor");
   const [orders, setOrders] = useState<Order[]>([]);
   const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
   const [isMockMode, setIsMockMode] = useState(true);
@@ -107,6 +121,20 @@ export default function CommandCenterPage() {
   const [cancelReason, setCancelReason] = useState("");
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [reportFilter, setReportFilter] = useState<"ALL" | "SUCCESS" | "CANCELLED">("ALL");
+  
+  // Menu Management states
+  const { menus, addMenu, toggleAvailability, deleteMenu, resetMenus } = useMenu();
+  const [kelolaCategoryFilter, setKelolaCategoryFilter] = useState<string>("ALL");
+  const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
+  const [menuForm, setMenuForm] = useState({
+    name: "",
+    price: "",
+    category: "Mie Klasik",
+    description: "",
+    image: ""
+  });
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
   
   // Audio state (One-shot chime controls)
   const [isMuted, setIsMuted] = useState(false);
@@ -126,7 +154,7 @@ export default function CommandCenterPage() {
   };
 
   // Helper to map DB row to State structure
-  const mapDbOrderToKdsOrder = (dbOrder: any): Order => {
+  const mapDbOrderToKdsOrder = (dbOrder: DbOrder): Order => {
     const date = new Date(dbOrder.created_at);
     const timeStr = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")} WIB`;
     
@@ -154,7 +182,7 @@ export default function CommandCenterPage() {
   const playSubtleChime = () => {
     try {
       if (typeof window === "undefined") return;
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
       const now = audioCtx.currentTime;
       const tones = [987.77, 1318.51]; // B5 and E6 (friendly notification chime)
 
@@ -188,7 +216,9 @@ export default function CommandCenterPage() {
         alert("Akses ditolak! Silakan login melalui Portal Staf di halaman utama.");
         router.push("/");
       } else {
-        setIsAuthorized(true);
+        setTimeout(() => {
+          setIsAuthorized(true);
+        }, 0);
       }
     }
   }, [router]);
@@ -200,11 +230,15 @@ export default function CommandCenterPage() {
     const isPlaceholder = process.env.NEXT_PUBLIC_SUPABASE_URL === undefined || 
                           process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
     
-    setIsMockMode(isPlaceholder);
+    setTimeout(() => {
+      setIsMockMode(isPlaceholder);
+      if (isPlaceholder) {
+        setOrders([...MOCK_PENDING_ORDERS, ...MOCK_PREPARING_ORDERS]);
+        setHistoryOrders(MOCK_HISTORY_ORDERS);
+      }
+    }, 0);
 
     if (isPlaceholder) {
-      setOrders([...MOCK_PENDING_ORDERS, ...MOCK_PREPARING_ORDERS]);
-      setHistoryOrders(MOCK_HISTORY_ORDERS);
       return;
     }
 
@@ -217,7 +251,7 @@ export default function CommandCenterPage() {
         .order("created_at", { ascending: false });
       
       if (!error && data) {
-        setOrders(data.map(mapDbOrderToKdsOrder));
+        setOrders((data as unknown as DbOrder[]).map(mapDbOrderToKdsOrder));
       }
     };
 
@@ -230,7 +264,7 @@ export default function CommandCenterPage() {
         .order("created_at", { ascending: false });
       
       if (!error && data) {
-        setHistoryOrders(data.map(mapDbOrderToKdsOrder));
+        setHistoryOrders((data as unknown as DbOrder[]).map(mapDbOrderToKdsOrder));
       }
     };
 
@@ -244,7 +278,7 @@ export default function CommandCenterPage() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "orders" },
         (payload) => {
-          const newOrder = mapDbOrderToKdsOrder(payload.new);
+          const newOrder = mapDbOrderToKdsOrder(payload.new as unknown as DbOrder);
           if (newOrder.status === "PENDING" || newOrder.status === "PREPARING" || newOrder.status === "WAITING_PICKUP") {
             setOrders(prev => [newOrder, ...prev]);
             if (newOrder.status === "PENDING" && !isMutedRef.current) {
@@ -259,7 +293,7 @@ export default function CommandCenterPage() {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "orders" },
         (payload) => {
-          const updatedOrder = mapDbOrderToKdsOrder(payload.new);
+          const updatedOrder = mapDbOrderToKdsOrder(payload.new as unknown as DbOrder);
           if (updatedOrder.status === "PENDING" || updatedOrder.status === "PREPARING" || updatedOrder.status === "WAITING_PICKUP") {
             setOrders(prev => {
               const exists = prev.some(o => o.id === updatedOrder.id);
@@ -415,6 +449,57 @@ export default function CommandCenterPage() {
     }
   };
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setImageError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setImageError("Format file harus berupa gambar (JPG, PNG, dll.)");
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      setImageError("Ukuran gambar maksimal 2MB");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      setImagePreview(base64String);
+      setMenuForm(prev => ({ ...prev, image: base64String }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAddMenuSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!menuForm.name.trim() || !menuForm.price) return;
+
+    const newMenuItem = {
+      id: "custom_" + Date.now(),
+      name: menuForm.name.trim(),
+      price: Number(menuForm.price),
+      category: menuForm.category as "Mie Klasik" | "Miago" | "Mie Pedas" | "Rice Bowl & Steak" | "Camilan" | "Minuman",
+      description: menuForm.description.trim() || "Menu lezat racikan khas Sutra.",
+      image_url: menuForm.image || undefined,
+      is_available: true
+    };
+
+    addMenu(newMenuItem);
+    
+    setMenuForm({
+      name: "",
+      price: "",
+      category: "Mie Klasik",
+      description: "",
+      image: ""
+    });
+    setImagePreview(null);
+    setIsAddMenuOpen(false);
+  };
+
   const copyToJeggBoy = (order: Order) => {
     const itemsText = order.items.map(item => {
       const noteText = item.notes ? ` (Catatan: ${item.notes})` : '';
@@ -547,10 +632,10 @@ No rekening dapat pilih salah satu :
       </header>
 
       {/* Tab bar switch */}
-      <div className="flex border-b border-zinc-200 bg-white shrink-0 px-6">
+      <div className="flex border-b border-zinc-200 bg-white shrink-0 px-6 overflow-x-auto whitespace-nowrap flex-nowrap scrollbar-none">
         <button
           onClick={() => setActiveTab("monitor")}
-          className={`py-3.5 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all ${
+          className={`py-3.5 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex-none shrink-0 ${
             activeTab === "monitor"
               ? "border-charcoal text-charcoal"
               : "border-transparent text-zinc-400 hover:text-zinc-650"
@@ -560,7 +645,7 @@ No rekening dapat pilih salah satu :
         </button>
         <button
           onClick={() => setActiveTab("pickup")}
-          className={`py-3.5 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all ${
+          className={`py-3.5 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex-none shrink-0 ${
             activeTab === "pickup"
               ? "border-charcoal text-charcoal"
               : "border-transparent text-zinc-400 hover:text-zinc-650"
@@ -569,8 +654,18 @@ No rekening dapat pilih salah satu :
           Status Pickup Driver ({orders.filter(o => o.status === "WAITING_PICKUP").length})
         </button>
         <button
+          onClick={() => setActiveTab("kelola")}
+          className={`py-3.5 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex-none shrink-0 ${
+            activeTab === "kelola"
+              ? "border-charcoal text-charcoal"
+              : "border-transparent text-zinc-400 hover:text-zinc-650"
+          }`}
+        >
+          KELOLA MENU ({menus.length})
+        </button>
+        <button
           onClick={() => setActiveTab("laporan")}
-          className={`py-3.5 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all ${
+          className={`py-3.5 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex-none shrink-0 ${
             activeTab === "laporan"
               ? "border-charcoal text-charcoal"
               : "border-transparent text-zinc-400 hover:text-zinc-650"
@@ -894,6 +989,159 @@ No rekening dapat pilih salah satu :
             </section>
             
           </div>
+        ) : activeTab === "kelola" ? (
+          /* KELOLA MENU TAB: Catalog management panel */
+          <div className="h-full overflow-y-auto p-8 bg-zinc-50 space-y-6 flex flex-col">
+            
+            {/* Header section with add button */}
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-white p-6 rounded-[1.5rem] border border-zinc-200 shadow-xs">
+              <div className="space-y-1">
+                <h2 className="text-xl font-black text-charcoal uppercase tracking-tight">Kelola Katalog Menu</h2>
+                <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider">
+                  Total live di customer: {menus.filter(m => m.is_available).length} dari {menus.length} menu
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setIsAddMenuOpen(true)}
+                  className="bg-charcoal text-white hover:bg-gold hover:text-charcoal font-black px-5 py-3 rounded-xl text-xs uppercase tracking-widest transition-all shadow-md flex items-center gap-1.5"
+                >
+                  <Plus size={14} /> Tambah Menu
+                </button>
+                
+                <button
+                  onClick={() => {
+                    if (confirm("Reset katalog menu ke default awal? Seluruh menu kustom akan terhapus.")) {
+                      resetMenus();
+                    }
+                  }}
+                  className="bg-white hover:bg-zinc-50 text-zinc-500 border border-zinc-200 font-bold px-4 py-3 rounded-xl text-xs uppercase tracking-wider transition-all flex items-center gap-1.5"
+                  title="Kembalikan Menu Asli"
+                >
+                  <RefreshCw size={12} /> Reset Default
+                </button>
+              </div>
+            </div>
+
+            {/* Category Filter bar */}
+            <div className="flex flex-wrap items-center gap-2 bg-white p-4 px-6 rounded-2xl border border-zinc-200 shadow-xs">
+              <span className="text-[10px] font-black uppercase text-zinc-400 tracking-wider mr-2">Filter Kategori:</span>
+              {["ALL", "Mie Klasik", "Miago", "Mie Pedas", "Rice Bowl & Steak", "Camilan", "Minuman"].map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setKelolaCategoryFilter(cat)}
+                  className={`px-4 py-2 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all border ${
+                    kelolaCategoryFilter === cat
+                      ? "bg-charcoal text-white border-charcoal"
+                      : "bg-white text-zinc-500 border-zinc-200 hover:text-zinc-800"
+                  }`}
+                >
+                  {cat === "ALL" ? "Semua" : cat}
+                </button>
+              ))}
+            </div>
+
+            {/* Table/List View */}
+            <div className="bg-white rounded-[1.5rem] border border-zinc-200 shadow-xs overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-400 font-extrabold uppercase tracking-wider text-[10px]">
+                      <th className="py-4 px-6 w-16">Foto</th>
+                      <th className="py-4 px-6">Nama Menu</th>
+                      <th className="py-4 px-6">Kategori</th>
+                      <th className="py-4 px-6 text-right">Harga</th>
+                      <th className="py-4 px-6 text-center w-28">Status</th>
+                      <th className="py-4 px-6 text-center w-20">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100 font-semibold text-zinc-700">
+                    {menus.filter(m => kelolaCategoryFilter === "ALL" || m.category === kelolaCategoryFilter).length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="text-center py-16 text-zinc-400 font-bold uppercase tracking-widest">
+                          Tidak ada menu dalam kategori ini
+                        </td>
+                      </tr>
+                    ) : (
+                      menus
+                        .filter(m => kelolaCategoryFilter === "ALL" || m.category === kelolaCategoryFilter)
+                        .map((menu) => (
+                          <tr key={menu.id} className="hover:bg-zinc-50/50 transition-colors">
+                            
+                            {/* Foto */}
+                            <td className="py-4 px-6">
+                              {menu.image_url ? (
+                                <img 
+                                  src={menu.image_url} 
+                                  alt={menu.name}
+                                  className="w-12 h-12 object-cover rounded-xl border border-zinc-150"
+                                />
+                              ) : (
+                                <div className="w-12 h-12 rounded-xl border border-zinc-200 bg-zinc-50 flex items-center justify-center text-zinc-450 font-bold text-lg">
+                                  {menu.category === "Minuman" ? "🍹" : (menu.category === "Camilan" ? "🍟" : "🍲")}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Nama & Deskripsi */}
+                            <td className="py-4 px-6">
+                              <span className="font-black text-zinc-950 uppercase tracking-tight block">{menu.name}</span>
+                              <span className="text-[10px] text-zinc-400 font-medium block mt-0.5 leading-normal max-w-xs md:max-w-md lg:max-w-lg truncate" title={menu.description}>
+                                {menu.description}
+                              </span>
+                            </td>
+
+                            {/* Kategori */}
+                            <td className="py-4 px-6">
+                              <span className="bg-zinc-100 text-zinc-650 border border-zinc-200 text-[10px] px-2 py-0.5 rounded-md font-extrabold uppercase tracking-wide">
+                                {menu.category}
+                              </span>
+                            </td>
+
+                            {/* Harga */}
+                            <td className="py-4 px-6 text-right font-extrabold text-zinc-950">
+                              {formatRupiah(menu.price)}
+                            </td>
+
+                            {/* Status Availability */}
+                            <td className="py-4 px-6 text-center">
+                              <button 
+                                onClick={() => toggleAvailability(menu.id)}
+                                className={`mx-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-colors border ${
+                                  menu.is_available 
+                                    ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100" 
+                                    : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
+                                }`}
+                              >
+                                {menu.is_available ? "Tersedia" : "Habis"}
+                              </button>
+                            </td>
+
+                            {/* Aksi Delete */}
+                            <td className="py-4 px-6 text-center">
+                              <button 
+                                onClick={() => {
+                                  if (confirm(`Hapus menu "${menu.name}"?`)) {
+                                    deleteMenu(menu.id);
+                                  }
+                                }}
+                                className="p-2 text-zinc-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors mx-auto block"
+                                title="Hapus Menu"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
+
+                          </tr>
+                        ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
         ) : (
           /* LAPORAN TAB: Historical data table and aggregates */
           <div className="h-full overflow-y-auto p-8 bg-zinc-50 space-y-8">
@@ -1122,6 +1370,159 @@ No rekening dapat pilih salah satu :
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tambah Menu Modal */}
+      {isAddMenuOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-[2rem] max-w-lg w-full p-8 border border-zinc-150 shadow-2xl relative my-8">
+            <button 
+              onClick={() => {
+                setIsAddMenuOpen(false);
+                setImagePreview(null);
+                setImageError(null);
+              }}
+              className="absolute top-6 right-6 text-zinc-400 hover:text-charcoal transition-colors p-1"
+            >
+              <X size={20} />
+            </button>
+            
+            <div className="text-center space-y-2 mb-8">
+              <h3 className="text-2xl font-black text-charcoal uppercase tracking-tight">Tambah Menu Baru</h3>
+              <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider">
+                Tambahkan hidangan baru ke dalam katalog aktif
+              </p>
+            </div>
+
+            <form onSubmit={handleAddMenuSubmit} className="space-y-6">
+              <div className="space-y-4 text-xs font-bold text-zinc-550 uppercase tracking-wider">
+                
+                {/* Nama Menu */}
+                <div className="space-y-2">
+                  <label htmlFor="menu-name" className="block text-[10px]">Nama Menu</label>
+                  <input
+                    required
+                    type="text"
+                    id="menu-name"
+                    placeholder="Contoh: Mie Ayam Rica-Rica"
+                    value={menuForm.name}
+                    onChange={(e) => setMenuForm(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full p-3 text-xs font-semibold border-2 border-zinc-200 focus:border-zinc-950 rounded-xl focus:outline-none transition-all"
+                  />
+                </div>
+
+                {/* Harga & Kategori (2 Columns) */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label htmlFor="menu-price" className="block text-[10px]">Harga</label>
+                    <input
+                      required
+                      type="number"
+                      id="menu-price"
+                      min="0"
+                      placeholder="Contoh: 18000"
+                      value={menuForm.price}
+                      onChange={(e) => setMenuForm(prev => ({ ...prev, price: e.target.value }))}
+                      className="w-full p-3 text-xs font-semibold border-2 border-zinc-200 focus:border-zinc-950 rounded-xl focus:outline-none transition-all"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label htmlFor="menu-category" className="block text-[10px]">Kategori</label>
+                    <select
+                      id="menu-category"
+                      value={menuForm.category}
+                      onChange={(e) => setMenuForm(prev => ({ ...prev, category: e.target.value }))}
+                      className="w-full p-3 text-xs font-semibold border-2 border-zinc-200 focus:border-zinc-950 rounded-xl focus:outline-none bg-white transition-all appearance-none"
+                    >
+                      <option value="Mie Klasik">Mie Klasik</option>
+                      <option value="Miago">Miago</option>
+                      <option value="Mie Pedas">Mie Pedas</option>
+                      <option value="Rice Bowl & Steak">Rice Bowl & Steak</option>
+                      <option value="Camilan">Camilan</option>
+                      <option value="Minuman">Minuman</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Deskripsi */}
+                <div className="space-y-2">
+                  <label htmlFor="menu-desc" className="block text-[10px]">Deskripsi</label>
+                  <textarea
+                    id="menu-desc"
+                    placeholder="Contoh: Mie kenyal dengan siraman bumbu rica-rica pedas gurih ditambah suwiran ayam pedas."
+                    value={menuForm.description}
+                    onChange={(e) => setMenuForm(prev => ({ ...prev, description: e.target.value }))}
+                    className="w-full min-h-[80px] p-3 text-xs font-semibold border-2 border-zinc-200 focus:border-zinc-950 rounded-xl focus:outline-none transition-all resize-none"
+                  />
+                </div>
+
+                {/* Foto Makanan (Upload preview) */}
+                <div className="space-y-2">
+                  <label className="block text-[10px]">Foto Makanan</label>
+                  <div className="relative border-2 border-dashed border-zinc-250 hover:border-zinc-400 rounded-2xl transition-all p-4 bg-zinc-50/50 flex flex-col items-center justify-center text-center cursor-pointer min-h-[140px]">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+                    />
+                    
+                    {imagePreview ? (
+                      <div className="relative w-full h-[120px] rounded-xl overflow-hidden group">
+                        <img 
+                          src={imagePreview} 
+                          alt="Preview" 
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-black uppercase tracking-wider">
+                          Ubah Gambar
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 flex flex-col items-center justify-center p-2">
+                        <ImageIcon className="text-zinc-400 w-8 h-8" />
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wide block">
+                          Klik / Tarik Foto Makanan ke Sini
+                        </span>
+                        <span className="text-[9px] font-medium text-zinc-400 normal-case block">
+                          Format JPG/PNG/WEBP, Maksimal 2MB
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {imageError && (
+                    <span className="text-[10px] text-red-500 font-extrabold normal-case block mt-1">
+                      ⚠️ {imageError}
+                    </span>
+                  )}
+                </div>
+
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="submit"
+                  className="flex-1 bg-charcoal hover:bg-gold text-white hover:text-charcoal font-black py-3.5 rounded-xl text-xs uppercase tracking-widest transition-all shadow-md"
+                >
+                  Simpan Menu
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddMenuOpen(false);
+                    setImagePreview(null);
+                    setImageError(null);
+                  }}
+                  className="px-6 py-3.5 border border-zinc-200 hover:bg-zinc-50 rounded-xl text-xs font-bold text-zinc-550 transition-colors uppercase tracking-wider"
+                >
+                  Batal
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

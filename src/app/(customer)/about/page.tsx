@@ -42,7 +42,7 @@ export default function AboutPage() {
           </p>
 
           <blockquote className="border-l-4 border-gold pl-6 py-3 my-12 italic text-charcoal font-black text-xl md:text-3xl bg-zinc-50 rounded-r-3xl tracking-tight leading-relaxed">
-            "Kami mendedikasikan waktu berjam-jam setiap subuh untuk menguleni adonan segar, guna menyajikan sepiring kehangatan otentik bagi pelanggan setia kami di kaki Gunung Merbabu."
+            &ldquo;Kami mendedikasikan waktu berjam-jam setiap subuh untuk menguleni adonan segar, guna menyajikan sepiring kehangatan otentik bagi pelanggan setia kami di kaki Gunung Merbabu.&rdquo;
           </blockquote>
 
           <p>

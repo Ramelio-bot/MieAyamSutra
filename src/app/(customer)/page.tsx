@@ -29,7 +29,7 @@ export default function HomePage() {
             Mie Ayam Sutra lahir dari warisan turun-temurun pembuatan mi mikro-halus secara tradisional. Setiap untaian mi ditarik dengan presisi tinggi untuk menghasilkan tekstur lembut luar biasa namun tetap memiliki elastisitas gigitan yang sempurna.
           </p>
           <p className="border-l-4 border-gold pl-6 py-1 italic text-zinc-700 font-medium">
-            "Bukan sekadar sajian kuliner, melainkan sebuah dedikasi rasa yang telah melayani masyarakat Salatiga selama dekade demi dekade."
+            &ldquo;Bukan sekadar sajian kuliner, melainkan sebuah dedikasi rasa yang telah melayani masyarakat Salatiga selama dekade demi dekade.&rdquo;
           </p>
         </div>
 

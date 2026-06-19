@@ -5,12 +5,14 @@ import MenuCard from "@/components/customer/MenuCard";
 import CartSheet from "@/components/customer/CartSheet";
 import { useState, useEffect } from "react";
 import { useCart } from "@/hooks/useCart";
+import { useMenu } from "@/hooks/useMenu";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2 } from "lucide-react";
 
 export default function MenuPage() {
   const { items, clearCart } = useCart();
+  const { menus } = useMenu();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -22,6 +24,15 @@ export default function MenuPage() {
   
   const [selectedCategory, setSelectedCategory] = useState<string>("Mie Klasik");
   const CATEGORIES = ["Mie Klasik", "Miago", "Mie Pedas", "Rice Bowl & Steak", "Camilan", "Minuman"];
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setTimeout(() => {
+      setMounted(true);
+    }, 0);
+  }, []);
+
+  const activeMenus = mounted ? menus : MOCK_MENUS;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,8 +65,9 @@ export default function MenuPage() {
         setFormData({ name: "", phone: "", address: "" });
         setShowSuccessModal(true);
       }
-    } catch (err: any) {
-      alert("Terjadi kesalahan jaringan: " + err.message);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      alert("Terjadi kesalahan jaringan: " + errMsg);
     } finally {
       setIsSubmitting(false);
     }
@@ -131,7 +143,7 @@ export default function MenuPage() {
         
         {/* High-padding grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-24">
-          {MOCK_MENUS.filter(menu => menu.category === selectedCategory).map(menu => (
+          {activeMenus.filter(menu => menu.category === selectedCategory && menu.is_available).map(menu => (
             <MenuCard key={menu.id} menu={menu} />
           ))}
         </div>

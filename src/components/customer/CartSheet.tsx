@@ -91,7 +91,7 @@ export default function CartSheet() {
                   <p className="text-gold font-bold text-sm mt-1">{formatRupiah(item.price)}</p>
                   
                   {item.notes && (
-                    <p className="text-xs text-gray-500 mt-2 bg-zinc-50 p-2 rounded-lg break-words italic">"{item.notes}"</p>
+                    <p className="text-xs text-gray-500 mt-2 bg-zinc-50 p-2 rounded-lg break-words italic">&ldquo;{item.notes}&rdquo;</p>
                   )}
 
                   <div className="flex items-center gap-4 mt-4">
