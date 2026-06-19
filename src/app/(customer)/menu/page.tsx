@@ -143,7 +143,7 @@ export default function MenuPage() {
         
         {/* High-padding grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-24">
-          {activeMenus.filter(menu => menu.category === selectedCategory && menu.is_available).map(menu => (
+          {activeMenus.filter(menu => menu.category === selectedCategory).map(menu => (
             <MenuCard key={menu.id} menu={menu} />
           ))}
         </div>

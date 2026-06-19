@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, X, Bell, BellOff, Database, ShoppingBag, Copy, ArrowLeft, Trash2, ImageIcon, Plus, RefreshCw, Pencil } from "lucide-react";
+import { Check, X, Bell, BellOff, Database, ShoppingBag, Copy, ArrowLeft, Trash2, ImageIcon, Plus, RefreshCw, Pencil, Search } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { formatRupiah } from "@/lib/constants";
 import { useMenu } from "@/hooks/useMenu";
@@ -144,6 +144,8 @@ export default function CommandCenterPage() {
     category: "Mie Klasik" as MenuItem['category'],
     description: ""
   });
+  
+  const [kelolaSearchQuery, setKelolaSearchQuery] = useState("");
   
   // Audio state (One-shot chime controls)
   const [isMuted, setIsMuted] = useState(false);
@@ -626,6 +628,13 @@ No rekening dapat pilih salah satu :
     }, 0);
 
   const totalDibatalkan = historyOrders.filter(o => o.status === "CANCELLED").length;
+  
+  const filteredMenus = menus.filter(m => {
+    const matchesCategory = kelolaCategoryFilter === "ALL" || m.category === kelolaCategoryFilter;
+    const matchesSearch = m.name.toLowerCase().includes(kelolaSearchQuery.toLowerCase()) ||
+                          m.description.toLowerCase().includes(kelolaSearchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-white">
@@ -1081,22 +1090,45 @@ No rekening dapat pilih salah satu :
               </div>
             </div>
 
-            {/* Category Filter bar */}
-            <div className="flex flex-wrap items-center gap-2 bg-white p-4 px-6 rounded-2xl border border-zinc-200 shadow-xs">
-              <span className="text-[10px] font-black uppercase text-zinc-400 tracking-wider mr-2">Filter Kategori:</span>
-              {["ALL", "Mie Klasik", "Miago", "Mie Pedas", "Rice Bowl & Steak", "Camilan", "Minuman"].map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setKelolaCategoryFilter(cat)}
-                  className={`px-4 py-2 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all border ${
-                    kelolaCategoryFilter === cat
-                      ? "bg-charcoal text-white border-charcoal"
-                      : "bg-white text-zinc-500 border-zinc-200 hover:text-zinc-800"
-                  }`}
-                >
-                  {cat === "ALL" ? "Semua" : cat}
-                </button>
-              ))}
+            {/* Category Filter bar & Search */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 px-6 rounded-2xl border border-zinc-200 shadow-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-black uppercase text-zinc-400 tracking-wider mr-2">Filter Kategori:</span>
+                {["ALL", "Mie Klasik", "Miago", "Mie Pedas", "Rice Bowl & Steak", "Camilan", "Minuman"].map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => setKelolaCategoryFilter(cat)}
+                    className={`px-4 py-2 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all border ${
+                      kelolaCategoryFilter === cat
+                        ? "bg-charcoal text-white border-charcoal"
+                        : "bg-white text-zinc-500 border-zinc-200 hover:text-zinc-800"
+                    }`}
+                  >
+                    {cat === "ALL" ? "Semua" : cat}
+                  </button>
+                ))}
+              </div>
+              
+              <div className="relative w-full md:w-72">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-zinc-400">
+                  <Search size={14} />
+                </span>
+                <input
+                  type="text"
+                  placeholder="Cari nama menu..."
+                  value={kelolaSearchQuery}
+                  onChange={(e) => setKelolaSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 text-xs font-bold border border-zinc-200 focus:border-zinc-950 rounded-xl focus:outline-none transition-all placeholder:text-zinc-400"
+                />
+                {kelolaSearchQuery && (
+                  <button
+                    onClick={() => setKelolaSearchQuery("")}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-zinc-400 hover:text-charcoal transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Table/List View */}
@@ -1114,16 +1146,14 @@ No rekening dapat pilih salah satu :
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100 font-semibold text-zinc-700">
-                    {menus.filter(m => kelolaCategoryFilter === "ALL" || m.category === kelolaCategoryFilter).length === 0 ? (
+                    {filteredMenus.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="text-center py-16 text-zinc-400 font-bold uppercase tracking-widest">
-                          Tidak ada menu dalam kategori ini
+                          Tidak ada menu yang cocok dengan filter pencarian
                         </td>
                       </tr>
                     ) : (
-                      menus
-                        .filter(m => kelolaCategoryFilter === "ALL" || m.category === kelolaCategoryFilter)
-                        .map((menu) => (
+                      filteredMenus.map((menu) => (
                           <tr key={menu.id} className="hover:bg-zinc-50/50 transition-colors">
                             
                             {/* Foto */}
@@ -1179,16 +1209,30 @@ No rekening dapat pilih salah satu :
 
                             {/* Status Availability */}
                             <td className="py-4 px-6 text-center">
-                              <button 
-                                onClick={() => toggleAvailability(menu.id)}
-                                className={`mx-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-colors border ${
-                                  menu.is_available 
-                                    ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100" 
-                                    : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
-                                }`}
-                              >
-                                {menu.is_available ? "Tersedia" : "Habis"}
-                              </button>
+                              <div className="flex items-center justify-center gap-2.5 mx-auto">
+                                <span className={`text-[10px] font-black uppercase tracking-wider transition-colors select-none w-14 text-right ${
+                                  menu.is_available ? "text-green-600" : "text-zinc-400"
+                                }`}>
+                                  {menu.is_available ? "Tersedia" : "Habis"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleAvailability(menu.id)}
+                                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                    menu.is_available ? "bg-green-600" : "bg-zinc-300"
+                                  }`}
+                                  role="switch"
+                                  aria-checked={menu.is_available}
+                                  title={menu.is_available ? "Ubah ke Habis" : "Ubah ke Tersedia"}
+                                >
+                                  <span
+                                    aria-hidden="true"
+                                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                                      menu.is_available ? "translate-x-4" : "translate-x-0"
+                                    }`}
+                                  />
+                                </button>
+                              </div>
                             </td>
 
                             {/* Aksi Edit, Photo & Delete */}
@@ -1516,6 +1560,11 @@ No rekening dapat pilih salah satu :
                       onChange={(e) => setMenuForm(prev => ({ ...prev, price: e.target.value }))}
                       className="w-full p-3 text-xs font-semibold border-2 border-zinc-200 focus:border-zinc-950 rounded-xl focus:outline-none transition-all"
                     />
+                    {menuForm.price && (
+                      <span className="text-[10px] text-zinc-400 font-semibold normal-case block mt-1 pl-1">
+                        Preview: {formatRupiah(Number(menuForm.price))}
+                      </span>
+                    )}
                   </div>
                   
                   <div className="space-y-2">
@@ -1667,6 +1716,11 @@ No rekening dapat pilih salah satu :
                       onChange={(e) => setEditForm(prev => ({ ...prev, price: e.target.value }))}
                       className="w-full p-3 text-xs font-semibold border-2 border-zinc-200 focus:border-zinc-950 rounded-xl focus:outline-none transition-all"
                     />
+                    {editForm.price && (
+                      <span className="text-[10px] text-zinc-400 font-semibold normal-case block mt-1 pl-1">
+                        Preview: {formatRupiah(Number(editForm.price))}
+                      </span>
+                    )}
                   </div>
                   
                   <div className="space-y-2">
