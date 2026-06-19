@@ -3,10 +3,11 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, X, Bell, BellOff, Database, ShoppingBag, Copy, ArrowLeft, Trash2, ImageIcon, Plus, RefreshCw } from "lucide-react";
+import { Check, X, Bell, BellOff, Database, ShoppingBag, Copy, ArrowLeft, Trash2, ImageIcon, Plus, RefreshCw, Pencil } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { formatRupiah } from "@/lib/constants";
 import { useMenu } from "@/hooks/useMenu";
+import { MenuItem } from "@/types";
 
 interface OrderItem {
   name: string;
@@ -123,7 +124,7 @@ export default function CommandCenterPage() {
   const [reportFilter, setReportFilter] = useState<"ALL" | "SUCCESS" | "CANCELLED">("ALL");
   
   // Menu Management states
-  const { menus, addMenu, toggleAvailability, deleteMenu, resetMenus, updateMenuImage } = useMenu();
+  const { menus, addMenu, toggleAvailability, deleteMenu, resetMenus, updateMenuImage, updateMenuItem } = useMenu();
   const [kelolaCategoryFilter, setKelolaCategoryFilter] = useState<string>("ALL");
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [menuForm, setMenuForm] = useState({
@@ -135,6 +136,14 @@ export default function CommandCenterPage() {
   });
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
+  
+  const [editingProduct, setEditingProduct] = useState<MenuItem | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    price: "",
+    category: "Mie Klasik" as MenuItem['category'],
+    description: ""
+  });
   
   // Audio state (One-shot chime controls)
   const [isMuted, setIsMuted] = useState(false);
@@ -520,6 +529,32 @@ export default function CommandCenterPage() {
     });
     setImagePreview(null);
     setIsAddMenuOpen(false);
+  };
+
+  const handleOpenEditModal = (menu: MenuItem) => {
+    setEditingProduct(menu);
+    setEditForm({
+      name: menu.name,
+      price: String(menu.price),
+      category: menu.category,
+      description: menu.description
+    });
+  };
+
+  const handleEditMenuSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+    if (!editForm.name.trim() || !editForm.price) return;
+
+    updateMenuItem(editingProduct.id, {
+      name: editForm.name.trim(),
+      price: Number(editForm.price),
+      category: editForm.category,
+      description: editForm.description.trim()
+    });
+
+    setEditingProduct(null);
+    alert("Menu berhasil diperbarui!");
   };
 
   const copyToJeggBoy = (order: Order) => {
@@ -1156,9 +1191,16 @@ No rekening dapat pilih salah satu :
                               </button>
                             </td>
 
-                            {/* Aksi Delete & Photo */}
+                            {/* Aksi Edit, Photo & Delete */}
                             <td className="py-4 px-6 text-center">
                               <div className="flex items-center justify-center gap-1 mx-auto">
+                                <button
+                                  onClick={() => handleOpenEditModal(menu)}
+                                  className="p-2 text-zinc-400 hover:text-charcoal rounded-lg hover:bg-zinc-100 transition-colors"
+                                  title="Edit Menu"
+                                >
+                                  <Pencil size={16} />
+                                </button>
                                 <button
                                   onClick={() => document.getElementById(`file-input-${menu.id}`)?.click()}
                                   className="p-2 text-zinc-400 hover:text-charcoal rounded-lg hover:bg-zinc-100 transition-colors"
@@ -1172,7 +1214,7 @@ No rekening dapat pilih salah satu :
                                       deleteMenu(menu.id);
                                     }
                                   }}
-                                  className="p-2 text-zinc-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                                  className="p-2 text-zinc-400 hover:text-red-650 rounded-lg hover:bg-red-50 transition-colors"
                                   title="Hapus Menu"
                                 >
                                   <Trash2 size={16} />
@@ -1563,6 +1605,114 @@ No rekening dapat pilih salah satu :
                     setIsAddMenuOpen(false);
                     setImagePreview(null);
                     setImageError(null);
+                  }}
+                  className="px-6 py-3.5 border border-zinc-200 hover:bg-zinc-50 rounded-xl text-xs font-bold text-zinc-550 transition-colors uppercase tracking-wider"
+                >
+                  Batal
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Menu Modal */}
+      {editingProduct && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-[2rem] max-w-lg w-full p-8 border border-zinc-150 shadow-2xl relative my-8">
+            <button 
+              onClick={() => {
+                setEditingProduct(null);
+              }}
+              className="absolute top-6 right-6 text-zinc-400 hover:text-charcoal transition-colors p-1"
+            >
+              <X size={20} />
+            </button>
+            
+            <div className="text-center space-y-2 mb-8">
+              <h3 className="text-2xl font-black text-charcoal uppercase tracking-tight">Edit Menu</h3>
+              <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider">
+                Ubah informasi hidangan di dalam katalog aktif
+              </p>
+            </div>
+
+            <form onSubmit={handleEditMenuSubmit} className="space-y-6">
+              <div className="space-y-4 text-xs font-bold text-zinc-550 uppercase tracking-wider">
+                
+                {/* Nama Menu */}
+                <div className="space-y-2">
+                  <label htmlFor="edit-menu-name" className="block text-[10px]">Nama Menu</label>
+                  <input
+                    required
+                    type="text"
+                    id="edit-menu-name"
+                    placeholder="Contoh: Mie Ayam Rica-Rica"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full p-3 text-xs font-semibold border-2 border-zinc-200 focus:border-zinc-950 rounded-xl focus:outline-none transition-all"
+                  />
+                </div>
+
+                {/* Harga & Kategori (2 Columns) */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label htmlFor="edit-menu-price" className="block text-[10px]">Harga</label>
+                    <input
+                      required
+                      type="number"
+                      id="edit-menu-price"
+                      min="0"
+                      placeholder="Contoh: 18000"
+                      value={editForm.price}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, price: e.target.value }))}
+                      className="w-full p-3 text-xs font-semibold border-2 border-zinc-200 focus:border-zinc-950 rounded-xl focus:outline-none transition-all"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label htmlFor="edit-menu-category" className="block text-[10px]">Kategori</label>
+                    <select
+                      id="edit-menu-category"
+                      value={editForm.category}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, category: e.target.value as MenuItem['category'] }))}
+                      className="w-full p-3 text-xs font-semibold border-2 border-zinc-200 focus:border-zinc-950 rounded-xl focus:outline-none bg-white transition-all appearance-none"
+                    >
+                      <option value="Mie Klasik">Mie Klasik</option>
+                      <option value="Miago">Miago</option>
+                      <option value="Mie Pedas">Mie Pedas</option>
+                      <option value="Rice Bowl & Steak">Rice Bowl & Steak</option>
+                      <option value="Camilan">Camilan</option>
+                      <option value="Minuman">Minuman</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Deskripsi */}
+                <div className="space-y-2">
+                  <label htmlFor="edit-menu-desc" className="block text-[10px]">Deskripsi</label>
+                  <textarea
+                    id="edit-menu-desc"
+                    placeholder="Contoh: Mie kenyal dengan siraman bumbu rica-rica pedas gurih ditambah suwiran ayam pedas."
+                    value={editForm.description}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                    className="w-full min-h-[80px] p-3 text-xs font-semibold border-2 border-zinc-200 focus:border-zinc-950 rounded-xl focus:outline-none transition-all resize-none"
+                  />
+                </div>
+
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="submit"
+                  className="flex-1 bg-charcoal hover:bg-gold text-white hover:text-charcoal font-black py-3.5 rounded-xl text-xs uppercase tracking-widest transition-all shadow-md"
+                >
+                  Simpan Perubahan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingProduct(null);
                   }}
                   className="px-6 py-3.5 border border-zinc-200 hover:bg-zinc-50 rounded-xl text-xs font-bold text-zinc-550 transition-colors uppercase tracking-wider"
                 >

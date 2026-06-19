@@ -9,6 +9,7 @@ interface MenuState {
   deleteMenu: (id: string) => void;
   resetMenus: () => void;
   updateMenuImage: (id: string, imageUrl: string) => void;
+  updateMenuItem: (id: string, updatedFields: Partial<MenuItem>) => void;
 }
 
 export const useMenu = create<MenuState>((set) => {
@@ -70,6 +71,17 @@ export const useMenu = create<MenuState>((set) => {
       set((state) => {
         const newMenus = state.menus.map(item => 
           item.id === id ? { ...item, image_url: imageUrl } : item
+        );
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('sutra_menus', JSON.stringify(newMenus));
+        }
+        return { menus: newMenus };
+      });
+    },
+    updateMenuItem: (id, updatedFields) => {
+      set((state) => {
+        const newMenus = state.menus.map(item => 
+          item.id === id ? { ...item, ...updatedFields } : item
         );
         if (typeof window !== 'undefined') {
           localStorage.setItem('sutra_menus', JSON.stringify(newMenus));
