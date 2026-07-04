@@ -60,9 +60,10 @@ export default function MenuPage() {
   // Fetch initial menus from database on mount
   useEffect(() => {
     const loadDbMenus = async () => {
-      const isPlaceholder = process.env.NEXT_PUBLIC_SUPABASE_URL === undefined || 
-                            process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
-      if (isPlaceholder) return;
+      const isMockMode = process.env.NEXT_PUBLIC_MOCK_MODE === "true" ||
+                         !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+                         process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
+      if (isMockMode) return;
 
       try {
         const { data, error } = await supabase

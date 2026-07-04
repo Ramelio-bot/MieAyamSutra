@@ -255,10 +255,11 @@ export default function CommandCenterPage() {
         return;
       }
 
-      const isPlaceholder = process.env.NEXT_PUBLIC_SUPABASE_URL === undefined || 
+      const isMockModeEnv = process.env.NEXT_PUBLIC_MOCK_MODE === "true" || 
+                            !process.env.NEXT_PUBLIC_SUPABASE_URL ||
                             process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
 
-      if (isPlaceholder) {
+      if (isMockModeEnv) {
         if (token === "8888") {
           if (!cancelled) setIsAuthorized(true);
         } else {
@@ -295,18 +296,19 @@ export default function CommandCenterPage() {
   useEffect(() => {
     if (!isAuthorized) return;
 
-    const isPlaceholder = process.env.NEXT_PUBLIC_SUPABASE_URL === undefined || 
+    const isMockModeEnv = process.env.NEXT_PUBLIC_MOCK_MODE === "true" || 
+                          !process.env.NEXT_PUBLIC_SUPABASE_URL ||
                           process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
     
     setTimeout(() => {
-      setIsMockMode(isPlaceholder);
-      if (isPlaceholder) {
+      setIsMockMode(isMockModeEnv);
+      if (isMockModeEnv) {
         setOrders([...MOCK_PENDING_ORDERS, ...MOCK_PREPARING_ORDERS]);
         setHistoryOrders(MOCK_HISTORY_ORDERS);
       }
     }, 0);
 
-    if (isPlaceholder) {
+    if (isMockModeEnv) {
       return;
     }
 
