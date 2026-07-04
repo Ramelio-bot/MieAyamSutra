@@ -121,6 +121,7 @@ export default function CommandCenterPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
   const [isMockMode, setIsMockMode] = useState(true);
+  const [selectedOrderDetail, setSelectedOrderDetail] = useState<Order | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   interface Toast {
@@ -1462,7 +1463,9 @@ No penerima : ${order.customer_phone}`;
                   pickedUpTodayOrders.map((order) => (
                     <div 
                       key={order.id}
-                      className="bg-green-50/10 border border-zinc-200 rounded-2xl p-4 flex items-center justify-between"
+                      onClick={() => setSelectedOrderDetail(order)}
+                      className="bg-green-50/10 border border-zinc-200 rounded-2xl p-4 flex items-center justify-between cursor-pointer hover:bg-green-50/20 hover:shadow-xs transition-all"
+                      title="Klik untuk detail pesanan"
                     >
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
@@ -1869,7 +1872,12 @@ No penerima : ${order.customer_phone}`;
                           return true;
                         })
                         .map((order) => (
-                        <tr key={order.id} className="hover:bg-zinc-50/50 transition-colors">
+                        <tr 
+                          key={order.id} 
+                          onClick={() => setSelectedOrderDetail(order)}
+                          className="hover:bg-zinc-100/50 transition-colors cursor-pointer"
+                          title="Klik untuk detail transaksi"
+                        >
                           <td className="py-4 px-6 font-extrabold text-zinc-950">#{order.shortId}</td>
                           <td className="py-4 px-6 text-zinc-500">{order.time}</td>
                           <td className="py-4 px-6">
@@ -2257,6 +2265,124 @@ No penerima : ${order.customer_phone}`;
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Order Detail Modal */}
+      {selectedOrderDetail && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-charcoal/60 backdrop-blur-xs transition-opacity p-4">
+          <div className="bg-white rounded-[2rem] border border-zinc-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-black text-zinc-900">Pesanan #{selectedOrderDetail.shortId}</h3>
+                  <span className={`text-[9px] font-black px-2 py-0.5 rounded-md uppercase border tracking-wider ${
+                    selectedOrderDetail.status === "PICKED_UP"
+                      ? "bg-green-50 text-green-700 border-green-200"
+                      : selectedOrderDetail.status === "CANCELLED"
+                      ? "bg-red-50 text-red-700 border-red-200"
+                      : selectedOrderDetail.status === "WAITING_PICKUP"
+                      ? "bg-blue-50 text-blue-700 border-blue-200"
+                      : "bg-zinc-100 text-zinc-650 border-zinc-200"
+                  }`}>
+                    {selectedOrderDetail.status === "PICKED_UP" ? "Selesai / Diambil" : selectedOrderDetail.status}
+                  </span>
+                </div>
+                <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">
+                  Diterima: {selectedOrderDetail.time} ({selectedOrderDetail.created_at ? new Date(selectedOrderDetail.created_at).toLocaleDateString("id-ID") : "-"})
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedOrderDetail(null)}
+                className="p-2 text-zinc-400 hover:text-zinc-700 rounded-full hover:bg-zinc-100 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-6 overflow-y-auto flex-1 text-xs font-semibold text-zinc-650">
+              {/* Konsumen Info */}
+              <div className="bg-zinc-50 rounded-2xl p-4 border border-zinc-150 space-y-3">
+                <h4 className="text-[10px] font-black uppercase text-zinc-400 tracking-wider">Informasi Konsumen</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="text-[9px] text-zinc-400 block uppercase">Atas Nama</span>
+                    <span className="font-extrabold text-zinc-800 text-sm uppercase">{selectedOrderDetail.customer_name}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-zinc-400 block uppercase">No. WhatsApp</span>
+                    <span className="font-extrabold text-zinc-800 text-sm">{selectedOrderDetail.customer_phone}</span>
+                  </div>
+                </div>
+                <div className="pt-2.5 border-t border-zinc-200/60">
+                  <span className="text-[9px] text-zinc-400 block uppercase">Alamat Kirim</span>
+                  <span className="font-bold text-zinc-750 text-sm leading-relaxed">{selectedOrderDetail.delivery_address}</span>
+                </div>
+              </div>
+
+              {/* Rincian Pesanan */}
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-black uppercase text-zinc-400 tracking-wider">Rincian Menu Pesanan</h4>
+                <div className="border border-zinc-150 rounded-2xl overflow-hidden bg-white divide-y divide-zinc-100">
+                  {selectedOrderDetail.items.map((item, idx) => (
+                    <div key={idx} className="p-4 flex items-center justify-between gap-4">
+                      <div className="flex-1 space-y-0.5">
+                        <span className="font-extrabold text-zinc-800 uppercase block text-sm">
+                          <span className="text-gold font-black mr-2">{item.qty}x</span>{item.name}
+                        </span>
+                        {item.notes && (
+                          <span className="text-[10px] text-amber-500 font-bold block italic bg-amber-50/50 p-1 px-2 rounded-lg border border-amber-200/30 w-fit">
+                            Catatan: {item.notes}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <span className="text-zinc-400 block text-[10px]">{formatRupiah(item.price)} / porsi</span>
+                        <span className="font-extrabold text-zinc-800 block text-sm">{formatRupiah(item.price * item.qty)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Status Audit */}
+              {selectedOrderDetail.updated_at && (
+                <div className="bg-zinc-50/50 rounded-2xl p-4 border border-zinc-150 space-y-2 text-[10px] text-zinc-500 font-bold uppercase tracking-tight">
+                  <h4 className="text-[9px] font-black uppercase text-zinc-400 tracking-wider mb-2">Riwayat Audit Operasional</h4>
+                  <div className="flex justify-between">
+                    <span>Terakhir Diperbarui:</span>
+                    <span className="text-zinc-750">{new Date(selectedOrderDetail.updated_at).toLocaleString("id-ID")}</span>
+                  </div>
+                  {selectedOrderDetail.updated_by && (
+                    <div className="flex justify-between">
+                      <span>Operator / Staf:</span>
+                      <span className="text-zinc-750">{selectedOrderDetail.updated_by}</span>
+                    </div>
+                  )}
+                  {selectedOrderDetail.last_status && (
+                    <div className="flex justify-between">
+                      <span>Status Sebelumnya:</span>
+                      <span className="text-gold font-extrabold">{selectedOrderDetail.last_status}</span>
+                    </div>
+                  )}
+                  {selectedOrderDetail.cancel_reason && (
+                    <div className="flex justify-between pt-2 border-t border-zinc-200/50 text-red-650">
+                      <span>Alasan Batal:</span>
+                      <span className="font-extrabold">{selectedOrderDetail.cancel_reason}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-zinc-100 flex items-center justify-between bg-zinc-50/50 shrink-0">
+              <span className="text-zinc-500 font-extrabold uppercase text-[10px]">Total Pembayaran</span>
+              <span className="text-lg font-black text-zinc-950">{formatRupiah(selectedOrderDetail.total_amount)}</span>
+            </div>
           </div>
         </div>
       )}
