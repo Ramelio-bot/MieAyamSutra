@@ -123,6 +123,7 @@ export default function CommandCenterPage() {
   const [isMockMode, setIsMockMode] = useState(true);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState<Order | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [filterDate, setFilterDate] = useState<string>("");
 
   interface Toast {
     message: string;
@@ -995,19 +996,26 @@ No penerima : ${order.customer_phone}`;
   // Report calculations
   const pickedUpTodayOrders = historyOrders.filter(o => o.status === "PICKED_UP" && isToday(o.created_at));
 
-  const totalOmzet = historyOrders
+  const displayedHistoryOrders = historyOrders.filter(o => {
+    if (!filterDate) return true;
+    if (!o.created_at) return false;
+    const orderLocalDate = new Date(o.created_at).toLocaleDateString("en-CA"); // YYYY-MM-DD
+    return orderLocalDate === filterDate;
+  });
+
+  const totalOmzet = displayedHistoryOrders
     .filter(o => o.status === "PICKED_UP")
     .reduce((sum, o) => sum + o.total_amount, 0);
 
-  const totalPorsi = historyOrders
+  const totalPorsi = displayedHistoryOrders
     .filter(o => o.status === "PICKED_UP")
     .reduce((sum, o) => {
       return sum + o.items
-        .filter(item => item.name.toLowerCase().includes("mie"))
+        .filter(item => item.name.toLowerCase().includes("mie") || item.name.toLowerCase().includes("miago"))
         .reduce((itemSum, item) => itemSum + item.qty, 0);
     }, 0);
 
-  const totalDibatalkan = historyOrders.filter(o => o.status === "CANCELLED").length;
+  const totalDibatalkan = displayedHistoryOrders.filter(o => o.status === "CANCELLED").length;
   
   const filteredMenus = menus.filter(m => {
     const matchesCategory = kelolaCategoryFilter === "ALL" || m.category === kelolaCategoryFilter;
@@ -1803,44 +1811,66 @@ No penerima : ${order.customer_phone}`;
 
             {/* History Table list */}
             <div className="bg-white rounded-[1.5rem] border border-zinc-200 shadow-xs overflow-hidden">
-              <div className="p-4 px-6 border-b border-zinc-250 flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-white">
+              <div className="p-4 px-6 border-b border-zinc-250 flex flex-col md:flex-row justify-between md:items-center gap-4 bg-white">
                 <div className="space-y-1">
                   <h3 className="text-xs font-black text-zinc-700 uppercase tracking-widest">Daftar Transaksi Selesai</h3>
-                  <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">Total: {historyOrders.length} Pesanan</span>
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">Total: {displayedHistoryOrders.length} Pesanan</span>
                 </div>
                 
-                {/* Filter buttons */}
-                <div className="flex gap-2 shrink-0">
-                  <button
-                    onClick={() => setReportFilter("ALL")}
-                    className={`px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-xl transition-colors border ${
-                      reportFilter === "ALL" 
-                        ? "bg-charcoal text-white border-charcoal" 
-                        : "bg-white text-zinc-500 border-zinc-200 hover:text-zinc-800"
-                    }`}
-                  >
-                    Semua ({historyOrders.length})
-                  </button>
-                  <button
-                    onClick={() => setReportFilter("SUCCESS")}
-                    className={`px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-xl transition-colors border ${
-                      reportFilter === "SUCCESS" 
-                        ? "bg-green-600 text-white border-green-600" 
-                        : "bg-white text-zinc-500 border-zinc-200 hover:text-green-600"
-                    }`}
-                  >
-                    Sukses ({historyOrders.filter(o => o.status === "PICKED_UP").length})
-                  </button>
-                  <button
-                    onClick={() => setReportFilter("CANCELLED")}
-                    className={`px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-xl transition-colors border ${
-                      reportFilter === "CANCELLED" 
-                        ? "bg-red-600 text-white border-red-600" 
-                        : "bg-white text-zinc-500 border-zinc-200 hover:text-red-600"
-                    }`}
-                  >
-                    Batal ({historyOrders.filter(o => o.status === "CANCELLED").length})
-                  </button>
+                <div className="flex flex-wrap items-center gap-4 shrink-0">
+                  {/* Calendar Date Filter */}
+                  <div className="flex items-center gap-2 border border-zinc-200 rounded-xl px-3 py-1.5 bg-zinc-50/50 shadow-2xs">
+                    <span className="text-[9px] font-black uppercase text-zinc-400">Filter Tanggal:</span>
+                    <input 
+                      type="date"
+                      value={filterDate}
+                      onChange={(e) => setFilterDate(e.target.value)}
+                      className="bg-transparent border-0 text-[10.5px] font-extrabold text-zinc-700 focus:ring-0 p-0 cursor-pointer outline-hidden"
+                    />
+                    {filterDate && (
+                      <button
+                        onClick={() => setFilterDate("")}
+                        className="text-[9px] font-black text-red-500 hover:text-red-700 px-1 ml-1"
+                        title="Hapus Filter Tanggal"
+                      >
+                        Batal
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Filter buttons */}
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      onClick={() => setReportFilter("ALL")}
+                      className={`px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-xl transition-colors border ${
+                        reportFilter === "ALL" 
+                          ? "bg-charcoal text-white border-charcoal" 
+                          : "bg-white text-zinc-500 border-zinc-200 hover:text-zinc-800"
+                      }`}
+                    >
+                      Semua ({displayedHistoryOrders.length})
+                    </button>
+                    <button
+                      onClick={() => setReportFilter("SUCCESS")}
+                      className={`px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-xl transition-colors border ${
+                        reportFilter === "SUCCESS" 
+                          ? "bg-green-600 text-white border-green-600" 
+                          : "bg-white text-zinc-500 border-zinc-200 hover:text-green-600"
+                      }`}
+                    >
+                      Sukses ({displayedHistoryOrders.filter(o => o.status === "PICKED_UP").length})
+                    </button>
+                    <button
+                      onClick={() => setReportFilter("CANCELLED")}
+                      className={`px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-xl transition-colors border ${
+                        reportFilter === "CANCELLED" 
+                          ? "bg-red-600 text-white border-red-600" 
+                          : "bg-white text-zinc-500 border-zinc-200 hover:text-red-600"
+                      }`}
+                    >
+                      Batal ({displayedHistoryOrders.filter(o => o.status === "CANCELLED").length})
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1858,14 +1888,14 @@ No penerima : ${order.customer_phone}`;
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100 font-semibold text-zinc-700">
-                    {historyOrders.length === 0 ? (
+                    {displayedHistoryOrders.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="text-center py-12 text-zinc-450 font-bold uppercase tracking-widest">
-                          Belum Ada Data Transaksi Histori
+                          {filterDate ? "Tidak Ada Data Transaksi untuk Tanggal ini" : "Belum Ada Data Transaksi Histori"}
                         </td>
                       </tr>
                     ) : (
-                      historyOrders
+                      displayedHistoryOrders
                         .filter((order) => {
                           if (reportFilter === "SUCCESS") return order.status === "PICKED_UP";
                           if (reportFilter === "CANCELLED") return order.status === "CANCELLED";
