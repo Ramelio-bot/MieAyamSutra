@@ -260,7 +260,7 @@ export default function CommandCenterPage() {
                             process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
 
       if (isMockModeEnv) {
-        if (token === "8888") {
+        if (token === "8888" || token === "9399") {
           if (!cancelled) setIsAuthorized(true);
         } else {
           router.push("/");

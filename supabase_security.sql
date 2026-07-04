@@ -68,7 +68,8 @@ CREATE TABLE IF NOT EXISTS app_settings (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-INSERT INTO app_settings (key, value) VALUES ('staff_pin', '8888') ON CONFLICT (key) DO NOTHING;
+INSERT INTO app_settings (key, value) VALUES ('staff_pin', '9399') 
+ON CONFLICT (key) DO UPDATE SET value = '9399';
 
 CREATE OR REPLACE FUNCTION public.is_sutra_admin(pin TEXT)
 RETURNS BOOLEAN

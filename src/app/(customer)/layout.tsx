@@ -63,7 +63,7 @@ export default function CustomerLayout({
                             process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
 
       if (isMockModeEnv) {
-        if (token === "8888") {
+        if (token === "8888" || token === "9399") {
           if (pathname.startsWith("/admin") || pathname.startsWith("/dapur")) {
             setSelectedRoute(pathname);
             setIsModalOpen(false);
@@ -132,7 +132,7 @@ export default function CustomerLayout({
                           process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
 
     if (isMockModeEnv) {
-      if (pin === "8888") {
+      if (pin === "8888" || pin === "9399") {
         if (typeof window !== "undefined") {
           sessionStorage.setItem("sutra_staff_token", pin);
         }
