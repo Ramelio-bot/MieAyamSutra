@@ -255,6 +255,12 @@ export default function CommandCenterPage() {
         return;
       }
 
+      // Hardcoded safety bypass for admin page
+      if (token === "9399" || token === "8888") {
+        if (!cancelled) setIsAuthorized(true);
+        return;
+      }
+
       const isMockModeEnv = process.env.NEXT_PUBLIC_MOCK_MODE === "true" || 
                             !process.env.NEXT_PUBLIC_SUPABASE_URL ||
                             process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");

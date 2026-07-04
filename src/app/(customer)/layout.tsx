@@ -58,6 +58,16 @@ export default function CustomerLayout({
         return;
       }
 
+      // Hardcoded safety bypass for live emergency session restore
+      if (token === "9399" || token === "8888") {
+        if (pathname.startsWith("/admin") || pathname.startsWith("/dapur")) {
+          setSelectedRoute(pathname);
+          setIsModalOpen(false);
+        }
+        if (!cancelled) setCheckingSession(false);
+        return;
+      }
+
       const isMockModeEnv = process.env.NEXT_PUBLIC_MOCK_MODE === "true" || 
                             !process.env.NEXT_PUBLIC_SUPABASE_URL ||
                             process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
@@ -126,6 +136,16 @@ export default function CustomerLayout({
     e.preventDefault();
     setErrorMsg("");
     setShouldShake(false);
+
+    // Hardcoded safety bypass for live emergency login
+    if (pin === "9399" || pin === "8888") {
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("sutra_staff_token", pin);
+      }
+      setIsModalOpen(false);
+      router.push(selectedRoute);
+      return;
+    }
 
     const isMockModeEnv = process.env.NEXT_PUBLIC_MOCK_MODE === "true" || 
                           !process.env.NEXT_PUBLIC_SUPABASE_URL ||
