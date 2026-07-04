@@ -28,6 +28,9 @@ interface Order {
   status: "PENDING" | "PREPARING" | "WAITING_PICKUP" | "PICKED_UP" | "CANCELLED";
   cancel_reason?: string;
   created_at?: string;
+  updated_at?: string;
+  updated_by?: string;
+  last_status?: string;
 }
 
 interface DbOrder {
@@ -41,6 +44,9 @@ interface DbOrder {
   cancel_reason?: string;
   delivery_notes?: string;
   created_at: string;
+  updated_at?: string;
+  updated_by?: string;
+  last_status?: string;
 }
 
 const MOCK_PENDING_ORDERS: Order[] = [
@@ -116,6 +122,20 @@ export default function CommandCenterPage() {
   const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
   const [isMockMode, setIsMockMode] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  interface Toast {
+    message: string;
+    type: "success" | "error" | "info";
+    id: string;
+  }
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
+    const id = Date.now().toString();
+    setToasts(prev => [...prev, { message, type, id }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4500);
+  };
   
   // Rejection modal states
   const [rejectingOrderId, setRejectingOrderId] = useState<string | null>(null);
@@ -124,7 +144,7 @@ export default function CommandCenterPage() {
   const [reportFilter, setReportFilter] = useState<"ALL" | "SUCCESS" | "CANCELLED">("ALL");
   
   // Menu Management states
-  const { menus, addMenu, toggleAvailability, deleteMenu, resetMenus, updateMenuImage, updateMenuItem } = useMenu();
+  const { menus, setMenus, addMenu, toggleAvailability, deleteMenu, resetMenus, updateMenuImage, updateMenuItem } = useMenu();
   const [kelolaCategoryFilter, setKelolaCategoryFilter] = useState<string>("ALL");
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [menuForm, setMenuForm] = useState({
@@ -185,7 +205,10 @@ export default function CommandCenterPage() {
       status: dbOrder.status,
       items: dbOrder.items,
       cancel_reason: cancelReasonVal,
-      created_at: dbOrder.created_at
+      created_at: dbOrder.created_at,
+      updated_at: dbOrder.updated_at,
+      updated_by: dbOrder.updated_by,
+      last_status: dbOrder.last_status
     };
   };
 
@@ -219,19 +242,53 @@ export default function CommandCenterPage() {
     }
   };
 
-  // Check auth state
+  // Check auth state using sessionStorage and Supabase RPC
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const token = localStorage.getItem("sutra_staff_token");
-      if (token !== "8888") {
-        alert("Akses ditolak! Silakan login melalui Portal Staf di halaman utama.");
+    if (typeof window === "undefined") return;
+
+    let cancelled = false;
+
+    async function checkAuth() {
+      const token = sessionStorage.getItem("sutra_staff_token");
+      if (!token) {
         router.push("/");
-      } else {
-        setTimeout(() => {
-          setIsAuthorized(true);
-        }, 0);
+        return;
+      }
+
+      const isPlaceholder = process.env.NEXT_PUBLIC_SUPABASE_URL === undefined || 
+                            process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
+
+      if (isPlaceholder) {
+        if (token === "8888") {
+          if (!cancelled) setIsAuthorized(true);
+        } else {
+          router.push("/");
+        }
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase.rpc("is_sutra_admin", { pin: token });
+        if (error || !data) {
+          sessionStorage.removeItem("sutra_staff_token");
+          router.push("/");
+        } else {
+          if (!cancelled) {
+            setIsAuthorized(true);
+          }
+        }
+      } catch (err) {
+        console.error("Auth verification error:", err);
+        sessionStorage.removeItem("sutra_staff_token");
+        router.push("/");
       }
     }
+
+    checkAuth();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   // Load orders & Subscribe to all updates
@@ -279,8 +336,34 @@ export default function CommandCenterPage() {
       }
     };
 
+    // Fetch initial menus from Supabase
+    const fetchDbMenus = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("menus")
+          .select("*")
+          .order("name", { ascending: true });
+        
+        if (!error && data && data.length > 0) {
+          const mappedMenus = data.map(item => ({
+            id: item.id,
+            name: item.name,
+            description: item.description || "",
+            price: Number(item.price),
+            image_url: item.image_url || undefined,
+            is_available: item.is_available,
+            category: item.category as MenuItem['category']
+          }));
+          setMenus(mappedMenus);
+        }
+      } catch (err) {
+        console.error("Failed to load menus from Supabase:", err);
+      }
+    };
+
     fetchOrders();
     fetchHistory();
+    fetchDbMenus();
 
     // Subscribe to all inserts/updates on 'orders'
     const channel = supabase
@@ -332,12 +415,42 @@ export default function CommandCenterPage() {
       )
       .subscribe();
 
+    // Subscribe to all changes on 'menus'
+    const menuChannel = supabase
+      .channel("command-center-menus")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "menus" },
+        (payload) => {
+          const store = useMenu.getState();
+          if (payload.eventType === "INSERT") {
+            const newItem = payload.new as MenuItem;
+            store.addMenu(newItem);
+          } else if (payload.eventType === "UPDATE") {
+            const updatedItem = payload.new as MenuItem;
+            store.updateMenuItem(updatedItem.id, updatedItem);
+          } else if (payload.eventType === "DELETE") {
+            const deletedItem = payload.old as { id: string };
+            store.deleteMenu(deletedItem.id);
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(menuChannel);
     };
   }, [isAuthorized]);
 
   // Simulator
+  const getStaffToken = () => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("sutra_staff_token") || "system";
+    }
+    return "system";
+  };
+
   const handleSimulateOrder = async (targetStatus: "PENDING" | "PREPARING" | "WAITING_PICKUP") => {
     const nextId = (targetStatus === "PENDING" ? 2000 : (targetStatus === "PREPARING" ? 1000 : 3000)) + orders.length + 1;
     const now = new Date();
@@ -379,22 +492,33 @@ export default function CommandCenterPage() {
         ...mockOrderData
       };
       setOrders(prev => [newOrder, ...prev]);
+      showToast("Order simulasi berhasil ditambahkan!", "success");
       if (targetStatus === "PENDING" && !isMuted) {
         playSubtleChime();
       }
     } else {
       const { error } = await supabase.from("orders").insert([mockOrderData]);
-      if (error) alert("Error simulating order in DB: " + error.message);
+      if (error) {
+        showToast("Error simulating order in DB: " + error.message, "error");
+      } else {
+        showToast("Order simulasi berhasil ditambahkan ke server!", "success");
+      }
     }
   };
 
   // Actions
   const handleConfirm = async (id: string) => {
+    const staff = getStaffToken();
     if (isMockMode) {
-      setOrders(prev => prev.map(o => o.id === id ? { ...o, status: "PREPARING" as const } : o));
+      setOrders(prev => prev.map(o => o.id === id ? { ...o, status: "PREPARING" as const, updated_by: `staff-${staff}`, updated_at: new Date().toISOString(), last_status: o.status } : o));
+      showToast("Order dikonfirmasi ke Dapur!", "success");
     } else {
-      const { error } = await supabase.from("orders").update({ status: "PREPARING" }).eq("id", id);
-      if (error) alert("Gagal mengkonfirmasi orderan: " + error.message);
+      const { error } = await supabase.from("orders").update({ status: "PREPARING", updated_by: `staff-${staff}` }).eq("id", id);
+      if (error) {
+        showToast("Gagal mengkonfirmasi orderan: " + error.message, "error");
+      } else {
+        showToast("Order berhasil dikonfirmasi ke Dapur!", "success");
+      }
     }
   };
 
@@ -408,24 +532,37 @@ export default function CommandCenterPage() {
     if (!rejectingOrderId) return;
     const reason = cancelReason.trim() || "Tidak ada alasan spesifik";
     const targetOrder = orders.find(o => o.id === rejectingOrderId);
+    const staff = getStaffToken();
 
     if (isMockMode) {
       if (targetOrder) {
-        const updated = { ...targetOrder, status: "CANCELLED" as const, cancel_reason: reason };
+        const updated = { 
+          ...targetOrder, 
+          status: "CANCELLED" as const, 
+          cancel_reason: reason,
+          updated_by: `staff-${staff}`,
+          updated_at: new Date().toISOString(),
+          last_status: targetOrder.status
+        };
         setOrders(prev => prev.filter(o => o.id !== rejectingOrderId));
         setHistoryOrders(prev => [updated, ...prev]);
+        showToast("Pesanan berhasil ditolak (dibatalkan).", "info");
       }
     } else {
-      const { error } = await supabase.from("orders").update({ status: "CANCELLED", cancel_reason: reason }).eq("id", rejectingOrderId);
+      const { error } = await supabase.from("orders").update({ status: "CANCELLED", cancel_reason: reason, updated_by: `staff-${staff}` }).eq("id", rejectingOrderId);
       if (error) {
-        // Fallback: write to delivery_notes if cancel_reason column doesn't exist
         const fallbackError = await supabase.from("orders").update({ 
           status: "CANCELLED", 
-          delivery_notes: `Alasan Batal: ${reason}` 
+          delivery_notes: `Alasan Batal: ${reason}`,
+          updated_by: `staff-${staff}`
         }).eq("id", rejectingOrderId);
         if (fallbackError.error) {
-          alert("Gagal membatalkan orderan: " + fallbackError.error.message);
+          showToast("Gagal membatalkan orderan: " + fallbackError.error.message, "error");
+        } else {
+          showToast("Pesanan dibatalkan (menggunakan kolom fallback).", "info");
         }
+      } else {
+        showToast("Pesanan berhasil dibatalkan.", "info");
       }
     }
 
@@ -435,28 +572,52 @@ export default function CommandCenterPage() {
 
   const handleComplete = async (id: string) => {
     const targetOrder = orders.find(o => o.id === id);
+    const staff = getStaffToken();
     if (isMockMode) {
       if (targetOrder) {
-        const updated = { ...targetOrder, status: "WAITING_PICKUP" as const };
+        const updated = { 
+          ...targetOrder, 
+          status: "WAITING_PICKUP" as const,
+          updated_by: `staff-${staff}`,
+          updated_at: new Date().toISOString(),
+          last_status: targetOrder.status
+        };
         setOrders(prev => prev.map(o => o.id === id ? updated : o));
+        showToast("Masakan selesai! Menunggu pickup driver.", "success");
       }
     } else {
-      const { error } = await supabase.from("orders").update({ status: "WAITING_PICKUP" }).eq("id", id);
-      if (error) alert("Gagal menyelesaikan pesanan: " + error.message);
+      const { error } = await supabase.from("orders").update({ status: "WAITING_PICKUP", updated_by: `staff-${staff}` }).eq("id", id);
+      if (error) {
+        showToast("Gagal menyelesaikan pesanan: " + error.message, "error");
+      } else {
+        showToast("Masakan selesai! Menunggu pickup driver.", "success");
+      }
     }
   };
 
   const handleConfirmPickup = async (id: string) => {
     const targetOrder = orders.find(o => o.id === id);
+    const staff = getStaffToken();
     if (isMockMode) {
       if (targetOrder) {
-        const updated = { ...targetOrder, status: "PICKED_UP" as const };
+        const updated = { 
+          ...targetOrder, 
+          status: "PICKED_UP" as const,
+          updated_by: `staff-${staff}`,
+          updated_at: new Date().toISOString(),
+          last_status: targetOrder.status
+        };
         setOrders(prev => prev.filter(o => o.id !== id));
         setHistoryOrders(prev => [updated, ...prev]);
+        showToast("Pesanan telah diambil oleh Driver!", "success");
       }
     } else {
-      const { error } = await supabase.from("orders").update({ status: "PICKED_UP" }).eq("id", id);
-      if (error) alert("Gagal mengkonfirmasi pickup: " + error.message);
+      const { error } = await supabase.from("orders").update({ status: "PICKED_UP", updated_by: `staff-${staff}` }).eq("id", id);
+      if (error) {
+        showToast("Gagal mengkonfirmasi pickup: " + error.message, "error");
+      } else {
+        showToast("Pesanan telah diambil oleh Driver!", "success");
+      }
     }
   };
 
@@ -484,29 +645,48 @@ export default function CommandCenterPage() {
     reader.readAsDataURL(file);
   };
 
-  const handleProductImageChange = (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleProductImageChange = async (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      alert("Format file harus berupa gambar (JPG, PNG, dll.)");
+      showToast("Format file harus berupa gambar (JPG, PNG, dll.)", "error");
       return;
     }
 
     if (file.size > 2 * 1024 * 1024) {
-      alert("Ukuran gambar maksimal 2MB");
+      showToast("Ukuran gambar maksimal 2MB", "error");
       return;
     }
 
     const reader = new FileReader();
-    reader.onloadend = () => {
+    reader.onloadend = async () => {
       const base64String = reader.result as string;
       updateMenuImage(id, base64String);
+
+      if (!isMockMode) {
+        try {
+          const { error } = await supabase
+            .from("menus")
+            .update({ image_url: base64String })
+            .eq("id", id);
+          if (error) {
+            showToast("Gagal sinkronisasi gambar ke server: " + error.message, "error");
+          } else {
+            showToast("Foto menu berhasil diperbarui!", "success");
+          }
+        } catch (err) {
+          console.error("Error updating image in DB", err);
+          showToast("Kesalahan jaringan saat mengunggah foto menu.", "error");
+        }
+      } else {
+        showToast("Foto menu berhasil diperbarui!", "success");
+      }
     };
     reader.readAsDataURL(file);
   };
 
-  const handleAddMenuSubmit = (e: React.FormEvent) => {
+  const handleAddMenuSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!menuForm.name.trim() || !menuForm.price) return;
 
@@ -521,6 +701,30 @@ export default function CommandCenterPage() {
     };
 
     addMenu(newMenuItem);
+
+    if (!isMockMode) {
+      try {
+        const { error } = await supabase.from("menus").insert([{
+          id: newMenuItem.id,
+          name: newMenuItem.name,
+          price: newMenuItem.price,
+          category: newMenuItem.category,
+          description: newMenuItem.description,
+          image_url: newMenuItem.image_url,
+          is_available: newMenuItem.is_available
+        }]);
+        if (error) {
+          showToast("Gagal menyimpan menu baru ke server: " + error.message, "error");
+        } else {
+          showToast("Menu baru berhasil disimpan ke database!", "success");
+        }
+      } catch (err) {
+        console.error("Error saving menu", err);
+        showToast("Kesalahan jaringan saat menyimpan menu.", "error");
+      }
+    } else {
+      showToast("Menu berhasil ditambahkan!", "success");
+    }
     
     setMenuForm({
       name: "",
@@ -543,20 +747,88 @@ export default function CommandCenterPage() {
     });
   };
 
-  const handleEditMenuSubmit = (e: React.FormEvent) => {
+  const handleEditMenuSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
     if (!editForm.name.trim() || !editForm.price) return;
 
-    updateMenuItem(editingProduct.id, {
+    const updatedFields = {
       name: editForm.name.trim(),
       price: Number(editForm.price),
       category: editForm.category,
       description: editForm.description.trim()
-    });
+    };
+
+    updateMenuItem(editingProduct.id, updatedFields);
+
+    if (!isMockMode) {
+      try {
+        const { error } = await supabase
+          .from("menus")
+          .update(updatedFields)
+          .eq("id", editingProduct.id);
+        if (error) {
+          showToast("Gagal memperbarui menu di server: " + error.message, "error");
+        } else {
+          showToast("Menu berhasil diperbarui di database!", "success");
+        }
+      } catch (err) {
+        console.error("Error updating menu in DB", err);
+        showToast("Kesalahan jaringan saat memperbarui menu.", "error");
+      }
+    } else {
+      showToast("Menu berhasil diperbarui!", "success");
+    }
 
     setEditingProduct(null);
-    alert("Menu berhasil diperbarui!");
+  };
+
+  const handleToggleAvailability = async (id: string, currentStatus: boolean) => {
+    toggleAvailability(id);
+
+    if (!isMockMode) {
+      try {
+        const { error } = await supabase
+          .from("menus")
+          .update({ is_available: !currentStatus })
+          .eq("id", id);
+        if (error) {
+          showToast("Gagal memperbarui ketersediaan di server: " + error.message, "error");
+        } else {
+          showToast(`Ketersediaan menu diubah menjadi: ${!currentStatus ? "Tersedia" : "Habis"}`, "info");
+        }
+      } catch (err) {
+        console.error("Error toggling availability in DB", err);
+        showToast("Kesalahan jaringan saat memperbarui ketersediaan.", "error");
+      }
+    } else {
+      showToast(`Ketersediaan menu diubah menjadi: ${!currentStatus ? "Tersedia" : "Habis"}`, "info");
+    }
+  };
+
+  const handleConfirmDelete = async (menuItem: MenuItem) => {
+    if (confirm(`Hapus menu "${menuItem.name}"?`)) {
+      deleteMenu(menuItem.id);
+
+      if (!isMockMode) {
+        try {
+          const { error } = await supabase
+            .from("menus")
+            .delete()
+            .eq("id", menuItem.id);
+          if (error) {
+            showToast("Gagal menghapus menu di server: " + error.message, "error");
+          } else {
+            showToast("Menu berhasil dihapus dari database!", "success");
+          }
+        } catch (err) {
+          console.error("Error deleting menu in DB", err);
+          showToast("Kesalahan jaringan saat menghapus menu.", "error");
+        }
+      } else {
+        showToast("Menu berhasil dihapus!", "success");
+      }
+    }
   };
 
   const copyToJeggBoy = (order: Order) => {
@@ -801,6 +1073,26 @@ No rekening dapat pilih salah satu :
                             <span className="text-[9px] font-bold uppercase text-zinc-400 block tracking-wider">Alamat Kirim</span>
                             <span className="font-semibold text-zinc-500 leading-normal">{order.delivery_address}</span>
                           </div>
+                          {order.updated_at && (
+                            <div className="mt-2 pt-2 border-t border-dashed border-zinc-150 text-[10px] text-zinc-455 space-y-0.5 font-medium leading-normal">
+                              <div className="flex justify-between">
+                                <span className="text-[9px] font-bold uppercase text-zinc-400">Diperbarui:</span>
+                                <span>{new Date(order.updated_at).toLocaleString("id-ID")}</span>
+                              </div>
+                              {order.updated_by && (
+                                <div className="flex justify-between">
+                                  <span className="text-[9px] font-bold uppercase text-zinc-400">Oleh:</span>
+                                  <span className="uppercase">{order.updated_by}</span>
+                                </div>
+                              )}
+                              {order.last_status && (
+                                <div className="flex justify-between">
+                                  <span className="text-[9px] font-bold uppercase text-zinc-400">Status Awal:</span>
+                                  <span className="font-extrabold text-gold uppercase">{order.last_status}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
                           <div className="flex justify-between items-center pt-2">
                             <span className="text-[10px] font-extrabold text-zinc-700 uppercase">Total Harga</span>
                             <span className="font-black text-sm text-zinc-900">{formatRupiah(order.total_amount)}</span>
@@ -885,6 +1177,26 @@ No rekening dapat pilih salah satu :
                             <span className="text-[9px] font-bold uppercase text-zinc-550 block tracking-wider">Alamat</span>
                             <span className="font-semibold text-zinc-300 leading-normal">{order.delivery_address}</span>
                           </div>
+                          {order.updated_at && (
+                            <div className="mt-2.5 pt-2.5 border-t border-dashed border-zinc-800 text-[10px] text-zinc-400 space-y-0.5 font-medium leading-normal">
+                              <div className="flex justify-between">
+                                <span className="text-[9px] font-bold uppercase text-zinc-555">Diperbarui:</span>
+                                <span>{new Date(order.updated_at).toLocaleString("id-ID")}</span>
+                              </div>
+                              {order.updated_by && (
+                                <div className="flex justify-between">
+                                  <span className="text-[9px] font-bold uppercase text-zinc-555">Oleh:</span>
+                                  <span className="uppercase">{order.updated_by}</span>
+                                </div>
+                              )}
+                              {order.last_status && (
+                                <div className="flex justify-between">
+                                  <span className="text-[9px] font-bold uppercase text-zinc-555">Status Awal:</span>
+                                  <span className="font-extrabold text-gold uppercase">{order.last_status}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -974,6 +1286,26 @@ No rekening dapat pilih salah satu :
                             <span className="text-[9px] font-bold uppercase text-zinc-400 block tracking-wider">Alamat Kirim</span>
                             <span className="font-semibold text-zinc-500 leading-normal">{order.delivery_address}</span>
                           </div>
+                          {order.updated_at && (
+                            <div className="mt-2 pt-2 border-t border-dashed border-zinc-150 text-[10px] text-zinc-455 space-y-0.5 font-medium leading-normal">
+                              <div className="flex justify-between">
+                                <span className="text-[9px] font-bold uppercase text-zinc-400">Diperbarui:</span>
+                                <span>{new Date(order.updated_at).toLocaleString("id-ID")}</span>
+                              </div>
+                              {order.updated_by && (
+                                <div className="flex justify-between">
+                                  <span className="text-[9px] font-bold uppercase text-zinc-400">Oleh:</span>
+                                  <span className="uppercase">{order.updated_by}</span>
+                                </div>
+                              )}
+                              {order.last_status && (
+                                <div className="flex justify-between">
+                                  <span className="text-[9px] font-bold uppercase text-zinc-400">Status Awal:</span>
+                                  <span className="font-extrabold text-gold uppercase">{order.last_status}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
                           <div className="flex justify-between items-center pt-2">
                             <span className="text-[10px] font-extrabold text-zinc-700 uppercase">Total Harga</span>
                             <span className="font-black text-sm text-zinc-900">{formatRupiah(order.total_amount)}</span>
@@ -1038,6 +1370,11 @@ No rekening dapat pilih salah satu :
                         <p className="text-[10px] text-zinc-400 max-w-[280px] truncate">
                           {order.delivery_address}
                         </p>
+                        {order.updated_at && (
+                          <p className="text-[9px] text-zinc-400 mt-1 font-semibold leading-none uppercase">
+                            Audit: {new Date(order.updated_at).toLocaleString("id-ID")} by {order.updated_by} (prev: {order.last_status || "-"})
+                          </p>
+                        )}
                       </div>
 
                       <div className="text-right space-y-1">
@@ -1217,7 +1554,7 @@ No rekening dapat pilih salah satu :
                                 </span>
                                 <button
                                   type="button"
-                                  onClick={() => toggleAvailability(menu.id)}
+                                  onClick={() => handleToggleAvailability(menu.id, menu.is_available)}
                                   className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                                     menu.is_available ? "bg-green-600" : "bg-zinc-300"
                                   }`}
@@ -1253,11 +1590,7 @@ No rekening dapat pilih salah satu :
                                   <ImageIcon size={16} />
                                 </button>
                                 <button 
-                                  onClick={() => {
-                                    if (confirm(`Hapus menu "${menu.name}"?`)) {
-                                      deleteMenu(menu.id);
-                                    }
-                                  }}
+                                  onClick={() => handleConfirmDelete(menu)}
                                   className="p-2 text-zinc-400 hover:text-red-650 rounded-lg hover:bg-red-50 transition-colors"
                                   title="Hapus Menu"
                                 >
@@ -1397,6 +1730,11 @@ No rekening dapat pilih salah satu :
                           <td className="py-4 px-6">
                             <span className="font-extrabold text-zinc-900 block">{order.customer_name}</span>
                             <span className="text-[10px] text-zinc-400 block">{order.customer_phone}</span>
+                            {order.updated_at && (
+                              <span className="text-[9px] text-zinc-450 font-bold block mt-1 uppercase tracking-tight">
+                                Audit: {new Date(order.updated_at).toLocaleString("id-ID")} by {order.updated_by} (prev: {order.last_status || "-"})
+                              </span>
+                            )}
                           </td>
                           <td className="py-4 px-6 text-zinc-500 max-w-xs truncate" title={order.delivery_address}>
                             {order.delivery_address}
@@ -1777,6 +2115,30 @@ No rekening dapat pilih salah satu :
           </div>
         </div>
       )}
+
+      {/* Toasts Container */}
+      <div className="fixed bottom-5 right-5 z-[999] flex flex-col gap-2 max-w-sm w-full pointer-events-none">
+        {toasts.map(toast => (
+          <div
+            key={toast.id}
+            className={`p-4 rounded-2xl shadow-xl border text-xs font-bold uppercase tracking-wide flex items-center justify-between pointer-events-auto transition-all duration-300 transform translate-y-0 scale-100 ${
+              toast.type === "success"
+                ? "bg-emerald-50 text-emerald-800 border-emerald-100"
+                : toast.type === "error"
+                ? "bg-red-50 text-red-800 border-red-100"
+                : "bg-zinc-50 text-zinc-800 border-zinc-200"
+            }`}
+          >
+            <span>{toast.message}</span>
+            <button
+              onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+              className="ml-4 text-zinc-400 hover:text-zinc-650 transition-colors"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

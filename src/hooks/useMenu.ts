@@ -4,6 +4,7 @@ import { MOCK_MENUS } from '@/lib/constants';
 
 interface MenuState {
   menus: MenuItem[];
+  setMenus: (menus: MenuItem[]) => void;
   addMenu: (menu: MenuItem) => void;
   toggleAvailability: (id: string) => void;
   deleteMenu: (id: string) => void;
@@ -30,6 +31,14 @@ export const useMenu = create<MenuState>((set) => {
 
   return {
     menus: getInitialMenus(),
+    setMenus: (menus) => {
+      set(() => {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('sutra_menus', JSON.stringify(menus));
+        }
+        return { menus };
+      });
+    },
     addMenu: (menu) => {
       set((state) => {
         const newMenus = [...state.menus, menu];

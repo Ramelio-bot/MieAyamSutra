@@ -4,6 +4,8 @@ import { CartItem, MenuItem } from '@/types';
 interface CartState {
   items: CartItem[];
   isCartOpen: boolean;
+  hydrate: () => void;
+  persist: () => void;
   addToCart: (menu: MenuItem, qty?: number, notes?: string) => void;
   removeFromCart: (id: string) => void;
   updateQty: (id: string, qty: number) => void;
@@ -19,6 +21,23 @@ interface CartState {
 export const useCart = create<CartState>((set, get) => ({
   items: [],
   isCartOpen: false,
+
+  hydrate: () => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem('sutra_cart');
+      if (!raw) return;
+      const items = JSON.parse(raw) as CartItem[];
+      set({ items, isCartOpen: false });
+    } catch {
+      // ignore corrupt cart storage
+    }
+  },
+
+  persist() {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('sutra_cart', JSON.stringify(get().items));
+  },
   
   addToCart: (menu, qty = 1, notes = "") => {
     set((state) => {
@@ -30,7 +49,7 @@ export const useCart = create<CartState>((set, get) => ({
               ? { ...item, qty: item.qty + qty, notes: notes || item.notes } 
               : item
           ),
-          isCartOpen: true // Auto open cart when item added
+          isCartOpen: true
         };
       }
       return { 
@@ -38,12 +57,14 @@ export const useCart = create<CartState>((set, get) => ({
         isCartOpen: true
       };
     });
+    get().persist();
   },
 
   removeFromCart: (id) => {
     set((state) => ({
       items: state.items.filter(item => item.id !== id)
     }));
+    get().persist();
   },
 
   updateQty: (id, qty) => {
@@ -56,6 +77,7 @@ export const useCart = create<CartState>((set, get) => ({
         item.id === id ? { ...item, qty } : item
       )
     }));
+    get().persist();
   },
 
   updateNotes: (id, notes) => {
@@ -64,9 +86,13 @@ export const useCart = create<CartState>((set, get) => ({
         item.id === id ? { ...item, notes } : item
       )
     }));
+    get().persist();
   },
 
-  clearCart: () => set({ items: [], isCartOpen: false }),
+  clearCart: () => {
+    set({ items: [], isCartOpen: false });
+    if (typeof window !== 'undefined') localStorage.removeItem('sutra_cart');
+  },
 
   getTotalItems: () => {
     return get().items.reduce((total, item) => total + item.qty, 0);

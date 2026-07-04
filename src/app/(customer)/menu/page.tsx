@@ -8,11 +8,12 @@ import { useCart } from "@/hooks/useCart";
 import { useMenu } from "@/hooks/useMenu";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2, X } from "lucide-react";
+import { MenuItem } from "@/types";
 
 export default function MenuPage() {
   const { items, clearCart } = useCart();
-  const { menus } = useMenu();
+  const { menus, setMenus } = useMenu();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -26,24 +27,151 @@ export default function MenuPage() {
   const CATEGORIES = ["Mie Klasik", "Miago", "Mie Pedas", "Rice Bowl & Steak", "Camilan", "Minuman"];
 
   const [mounted, setMounted] = useState(false);
+  const [errors, setErrors] = useState<{
+    name?: string;
+    phone?: string;
+    address?: string;
+    general?: string;
+  }>({});
+
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+
+  interface Toast {
+    message: string;
+    type: "success" | "error" | "info";
+    id: string;
+  }
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  
+  const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
+    const id = Date.now().toString();
+    setToasts(prev => [...prev, { message, type, id }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4000);
+  };
+
   useEffect(() => {
     setTimeout(() => {
       setMounted(true);
     }, 0);
   }, []);
 
+  // Fetch initial menus from database on mount
+  useEffect(() => {
+    const loadDbMenus = async () => {
+      const isPlaceholder = process.env.NEXT_PUBLIC_SUPABASE_URL === undefined || 
+                            process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
+      if (isPlaceholder) return;
+
+      try {
+        const { data, error } = await supabase
+          .from("menus")
+          .select("*")
+          .order("name", { ascending: true });
+        
+        if (!error && data && data.length > 0) {
+          const mappedMenus = data.map(item => ({
+            id: item.id,
+            name: item.name,
+            description: item.description || "",
+            price: Number(item.price),
+            image_url: item.image_url || undefined,
+            is_available: item.is_available,
+            category: item.category as MenuItem['category']
+          }));
+          setMenus(mappedMenus);
+        }
+      } catch (err) {
+        console.error("Failed to load menus from Supabase, using local instead", err);
+      }
+    };
+    loadDbMenus();
+  }, [setMenus]);
+
+  // Check rate limit on mount and run a countdown
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const checkCooldown = () => {
+      const lastOrderTime = localStorage.getItem("last_order_timestamp");
+      if (lastOrderTime) {
+        const diff = Date.now() - Number(lastOrderTime);
+        const remaining = Math.max(0, Math.ceil((60000 - diff) / 1000));
+        setCooldownSeconds(remaining);
+      }
+    };
+
+    checkCooldown();
+
+    const interval = setInterval(() => {
+      const lastOrderTime = localStorage.getItem("last_order_timestamp");
+      if (lastOrderTime) {
+        const diff = Date.now() - Number(lastOrderTime);
+        const remaining = Math.max(0, Math.ceil((60000 - diff) / 1000));
+        setCooldownSeconds(remaining);
+        if (remaining <= 0) {
+          clearInterval(interval);
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [showSuccessModal]);
+
   const activeMenus = mounted ? menus : MOCK_MENUS;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (items.length === 0) return alert("Keranjang kosong!");
+    setErrors({});
+
+    const newErrors: typeof errors = {};
+
+    const totalAmount = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
+    if (items.length === 0) {
+      newErrors.general = "Keranjang Anda kosong! Silakan tambahkan menu terlebih dahulu.";
+    } else if (totalAmount <= 0) {
+      newErrors.general = "Total belanja harus lebih dari Rp 0.";
+    }
+
+    if (!formData.name.trim()) {
+      newErrors.name = "Nama lengkap harus diisi.";
+    }
+
+    const cleanedPhone = formData.phone.replace(/\D/g, "");
+    if (!formData.phone.trim()) {
+      newErrors.phone = "Nomor WhatsApp harus diisi.";
+    } else if (cleanedPhone.length < 10) {
+      newErrors.phone = "Nomor WhatsApp minimal harus 10 digit angka.";
+    } else if (!/^\d+$/.test(cleanedPhone)) {
+      newErrors.phone = "Nomor WhatsApp hanya boleh berisi angka.";
+    }
+
+    if (!formData.address.trim()) {
+      newErrors.address = "Alamat pengiriman harus diisi.";
+    } else if (formData.address.trim().length < 10) {
+      newErrors.address = "Alamat pengiriman minimal harus 10 karakter.";
+    }
+
+    if (cooldownSeconds > 0) {
+      newErrors.general = `Harap tunggu ${cooldownSeconds} detik sebelum membuat pesanan baru.`;
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      const element = document.getElementById("checkout-form");
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth" });
+      }
+      return;
+    }
     
     setIsSubmitting(true);
 
     const orderData = {
-      customer_name: formData.name,
-      customer_phone: formData.phone,
-      delivery_address: formData.address,
+      customer_name: formData.name.trim(),
+      customer_phone: cleanedPhone,
+      delivery_address: formData.address.trim(),
       items: items.map(item => ({
         id: item.id,
         name: item.name,
@@ -51,7 +179,7 @@ export default function MenuPage() {
         price: item.price,
         notes: item.notes || ""
       })),
-      total_amount: items.reduce((sum, item) => sum + (item.price * item.qty), 0),
+      total_amount: totalAmount,
       status: "PENDING"
     };
 
@@ -59,15 +187,18 @@ export default function MenuPage() {
       const { error } = await supabase.from("orders").insert([orderData]);
 
       if (error) {
-        alert("Gagal mengirim pesanan: " + error.message);
+        showToast("Gagal mengirim pesanan: " + error.message, "error");
       } else {
         clearCart();
         setFormData({ name: "", phone: "", address: "" });
+        localStorage.setItem("last_order_timestamp", Date.now().toString());
+        setCooldownSeconds(60);
+        showToast("Pesanan berhasil dikirim!", "success");
         setShowSuccessModal(true);
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      alert("Terjadi kesalahan jaringan: " + errMsg);
+      showToast("Terjadi kesalahan jaringan: " + errMsg, "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -168,12 +299,18 @@ export default function MenuPage() {
                   className="w-full bg-transparent border-b border-zinc-200 py-3 outline-none focus:border-zinc-900 focus:outline-none transition-colors peer text-lg font-medium text-charcoal placeholder-transparent"
                   placeholder="Atas Nama"
                   value={formData.name}
-                  onChange={e => setFormData({...formData, name: e.target.value})}
+                  onChange={e => {
+                    setFormData({...formData, name: e.target.value});
+                    if (errors.name) setErrors({...errors, name: undefined});
+                  }}
                   disabled={isSubmitting}
                 />
                 <label htmlFor="name" className="absolute left-0 -top-2 text-xs font-extrabold text-zinc-400 transition-all peer-placeholder-shown:text-base peer-placeholder-shown:top-3 peer-focus:-top-2 peer-focus:text-xs peer-focus:text-charcoal uppercase tracking-widest">
                   Atas Nama
                 </label>
+                {errors.name && (
+                  <p className="text-red-500 text-xs font-bold mt-1.5 uppercase tracking-wide">{errors.name}</p>
+                )}
               </div>
               
               <div className="relative group">
@@ -184,12 +321,18 @@ export default function MenuPage() {
                   className="w-full bg-transparent border-b border-zinc-200 py-3 outline-none focus:border-zinc-900 focus:outline-none transition-colors peer text-lg font-medium text-charcoal placeholder-transparent"
                   placeholder="No. WhatsApp"
                   value={formData.phone}
-                  onChange={e => setFormData({...formData, phone: e.target.value})}
+                  onChange={e => {
+                    setFormData({...formData, phone: e.target.value});
+                    if (errors.phone) setErrors({...errors, phone: undefined});
+                  }}
                   disabled={isSubmitting}
                 />
                 <label htmlFor="phone" className="absolute left-0 -top-2 text-xs font-extrabold text-zinc-400 transition-all peer-placeholder-shown:text-base peer-placeholder-shown:top-3 peer-focus:-top-2 peer-focus:text-xs peer-focus:text-charcoal uppercase tracking-widest">
                   No. WhatsApp
                 </label>
+                {errors.phone && (
+                  <p className="text-red-500 text-xs font-bold mt-1.5 uppercase tracking-wide">{errors.phone}</p>
+                )}
               </div>
               
               <div className="relative group">
@@ -200,12 +343,18 @@ export default function MenuPage() {
                   className="w-full bg-transparent border-b border-zinc-200 py-3 outline-none focus:border-zinc-900 focus:outline-none transition-colors peer text-lg font-medium text-charcoal placeholder-transparent resize-none"
                   placeholder="Alamat Lengkap (Salatiga)"
                   value={formData.address}
-                  onChange={e => setFormData({...formData, address: e.target.value})}
+                  onChange={e => {
+                    setFormData({...formData, address: e.target.value});
+                    if (errors.address) setErrors({...errors, address: undefined});
+                  }}
                   disabled={isSubmitting}
                 />
                 <label htmlFor="address" className="absolute left-0 -top-2 text-xs font-extrabold text-zinc-400 transition-all peer-placeholder-shown:text-base peer-placeholder-shown:top-3 peer-focus:-top-2 peer-focus:text-xs peer-focus:text-charcoal uppercase tracking-widest">
                   Alamat Lengkap (Salatiga)
                 </label>
+                {errors.address && (
+                  <p className="text-red-500 text-xs font-bold mt-1.5 uppercase tracking-wide">{errors.address}</p>
+                )}
               </div>
 
               <div className="pt-4">
@@ -217,9 +366,16 @@ export default function MenuPage() {
                 </div>
               </div>
 
+              {errors.general && (
+                <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-2xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 animate-pulse">
+                  <span>⚠️</span>
+                  <span>{errors.general}</span>
+                </div>
+              )}
+
               <button 
                 type="submit"
-                disabled={items.length === 0 || isSubmitting}
+                disabled={items.length === 0 || isSubmitting || cooldownSeconds > 0}
                 className="w-full bg-charcoal text-white font-black py-5 rounded-full mt-4 hover:bg-gold transition-colors disabled:opacity-30 disabled:cursor-not-allowed uppercase tracking-widest text-xs shadow-lg shadow-charcoal/10 flex items-center justify-center gap-2"
               >
                 {isSubmitting ? (
@@ -227,6 +383,8 @@ export default function MenuPage() {
                     <Loader2 className="animate-spin w-4 h-4" />
                     <span>Memproses Pesanan...</span>
                   </>
+                ) : cooldownSeconds > 0 ? (
+                  <span>Tunggu ({cooldownSeconds}s)</span>
                 ) : (
                   <span>Konfirmasi Pesanan</span>
                 )}
@@ -237,6 +395,30 @@ export default function MenuPage() {
       </section>
 
       <CartSheet />
+
+      {/* Toasts Container */}
+      <div className="fixed bottom-5 right-5 z-[999] flex flex-col gap-2 max-w-sm w-full pointer-events-none">
+        {toasts.map(toast => (
+          <div
+            key={toast.id}
+            className={`p-4 rounded-2xl shadow-xl border text-xs font-bold uppercase tracking-wide flex items-center justify-between pointer-events-auto transition-all duration-300 transform translate-y-0 scale-100 ${
+              toast.type === "success"
+                ? "bg-emerald-50 text-emerald-800 border-emerald-100"
+                : toast.type === "error"
+                ? "bg-red-50 text-red-800 border-red-100"
+                : "bg-zinc-50 text-zinc-800 border-zinc-200"
+            }`}
+          >
+            <span>{toast.message}</span>
+            <button
+              onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+              className="ml-4 text-zinc-400 hover:text-zinc-650 transition-colors"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

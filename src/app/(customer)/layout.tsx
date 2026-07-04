@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ShoppingBag, Lock, X } from "lucide-react";
 import { useCart } from "@/hooks/useCart";
+import { supabase } from "@/lib/supabase";
 
 export default function CustomerLayout({
   children,
@@ -21,6 +22,7 @@ export default function CustomerLayout({
   const [pin, setPin] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [shouldShake, setShouldShake] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on click outside
@@ -38,6 +40,59 @@ export default function CustomerLayout({
     };
   }, []);
 
+  // Restore admin session and guard admin routes
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let cancelled = false;
+
+    async function restore() {
+      const token = sessionStorage.getItem("sutra_staff_token");
+      const pathname = window.location.pathname || "";
+
+      if (!token) {
+        if (pathname.startsWith("/admin") || pathname.startsWith("/dapur")) {
+          router.replace("/");
+        }
+        if (!cancelled) setCheckingSession(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase.rpc("is_sutra_admin", {
+          pin: token,
+        });
+
+        if (!cancelled) {
+          if (error || !data) {
+            sessionStorage.removeItem("sutra_staff_token");
+            if (pathname.startsWith("/admin") || pathname.startsWith("/dapur")) {
+              router.replace("/");
+            }
+          } else if (pathname.startsWith("/admin") || pathname.startsWith("/dapur")) {
+            setSelectedRoute(pathname);
+            setIsModalOpen(false);
+          }
+          setCheckingSession(false);
+        }
+      } catch {
+        if (!cancelled) {
+          sessionStorage.removeItem("sutra_staff_token");
+          if (pathname.startsWith("/admin") || pathname.startsWith("/dapur")) {
+            router.replace("/");
+          }
+          setCheckingSession(false);
+        }
+      }
+    }
+
+    restore();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
   const handleOpenLogin = (route: string) => {
     setSelectedRoute(route);
     setIsDropdownOpen(false);
@@ -47,22 +102,60 @@ export default function CustomerLayout({
     setIsModalOpen(true);
   };
 
-  const handleSubmitPin = (e: React.FormEvent) => {
+  const handleSubmitPin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pin === "8888") {
+    setErrorMsg("");
+    setShouldShake(false);
+
+    try {
+      const { data, error } = await supabase.rpc("is_sutra_admin", {
+        pin,
+      });
+
+      if (error || !data) {
+        setShouldShake(true);
+        setErrorMsg("Akses Ditolak. PIN Salah!");
+        setTimeout(() => {
+          setShouldShake(false);
+        }, 500);
+        return;
+      }
+
       if (typeof window !== "undefined") {
-        localStorage.setItem("sutra_staff_token", "8888");
+        sessionStorage.setItem("sutra_staff_token", pin);
       }
       setIsModalOpen(false);
       router.push(selectedRoute);
-    } else {
+    } catch {
       setShouldShake(true);
-      setErrorMsg("Akses Ditolak. PIN Salah!");
-      setTimeout(() => {
-        setShouldShake(false);
-      }, 500);
+      setErrorMsg("Gagal memverifikasi PIN. Coba lagi.");
+      setTimeout(() => setShouldShake(false), 500);
     }
   };
+
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen bg-offwhite flex flex-col justify-between">
+        <header className="sticky top-0 z-40 w-full bg-white/90 backdrop-blur-md border-b border-gray-100">
+          <div className="container mx-auto px-4 lg:px-8 py-5 flex items-center justify-between">
+            <div className="flex-shrink-0">
+              <Link href="/" className="text-2xl font-black text-charcoal tracking-tight uppercase hover:text-gold transition-colors flex items-center gap-3">
+                Mie Ayam <span className="text-gold">Sutra.</span>
+              </Link>
+            </div>
+          </div>
+        </header>
+        <main className="flex-1" />
+        <footer className="bg-charcoal text-white/60 py-16 text-center text-sm mt-auto border-t border-zinc-800">
+          <div className="container mx-auto px-4 flex flex-col items-center gap-8">
+            <p className="mt-4 text-xs text-zinc-500 tracking-wide font-sans font-medium">
+              Incooperate with Myinvoice.Space | Powered by Digipro
+            </p>
+          </div>
+        </footer>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-offwhite flex flex-col justify-between">
