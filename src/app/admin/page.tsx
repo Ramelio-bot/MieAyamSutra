@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Check, X, Bell, BellOff, Database, ShoppingBag, Copy, ArrowLeft, Trash2, ImageIcon, Plus, RefreshCw, Pencil, Search } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { formatRupiah } from "@/lib/constants";
+import { formatRupiah, MOCK_MENUS } from "@/lib/constants";
 import { useMenu } from "@/hooks/useMenu";
 import { MenuItem } from "@/types";
 
@@ -1427,9 +1427,47 @@ No rekening dapat pilih salah satu :
                 </button>
                 
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (confirm("Reset katalog menu ke default awal? Seluruh menu kustom akan terhapus.")) {
                       resetMenus();
+                      if (!isMockMode) {
+                        try {
+                          showToast("Sedang mereset data server...", "info");
+                          const { error: delError } = await supabase
+                            .from("menus")
+                            .delete()
+                            .neq("id", "00000000-0000-0000-0000-000000000000"); // deletes all rows
+                          
+                          if (delError) {
+                            showToast("Gagal membersihkan data server: " + delError.message, "error");
+                            return;
+                          }
+
+                          const menusToInsert = MOCK_MENUS.map(m => ({
+                            name: m.name,
+                            price: m.price,
+                            category: m.category,
+                            description: m.description,
+                            image_url: m.image_url,
+                            is_available: m.is_available
+                          }));
+
+                          const { error: insError } = await supabase
+                            .from("menus")
+                            .insert(menusToInsert);
+
+                          if (insError) {
+                            showToast("Gagal menyimpan menu default ke server: " + insError.message, "error");
+                          } else {
+                            showToast("Database menu berhasil di-reset ke default!", "success");
+                          }
+                        } catch (err) {
+                          console.error("Error resetting database menus", err);
+                          showToast("Kesalahan jaringan saat mereset server.", "error");
+                        }
+                      } else {
+                        showToast("Katalog menu berhasil di-reset!", "success");
+                      }
                     }
                   }}
                   className="bg-white hover:bg-zinc-50 text-zinc-500 border border-zinc-200 font-bold px-4 py-3 rounded-xl text-xs uppercase tracking-wider transition-all flex items-center gap-1.5"

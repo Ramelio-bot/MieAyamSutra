@@ -120,7 +120,7 @@ export default function MenuPage() {
     return () => clearInterval(interval);
   }, [showSuccessModal]);
 
-  const activeMenus = mounted ? menus : MOCK_MENUS;
+  const activeMenus = mounted && menus.length > 0 ? menus : MOCK_MENUS;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
