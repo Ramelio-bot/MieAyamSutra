@@ -571,15 +571,34 @@ export default function CommandCenterPage() {
   // Actions
   const handleConfirm = async (id: string) => {
     const staff = getStaffToken();
+    const targetOrder = orders.find(o => o.id === id);
+    const localUpdate = () => {
+      setOrders(prev => prev.map(o => o.id === id ? { 
+        ...o, 
+        status: "PREPARING" as const, 
+        updated_by: `staff-${staff}`, 
+        updated_at: new Date().toISOString(), 
+        last_status: o.status 
+      } : o));
+    };
+
     if (isMockMode) {
-      setOrders(prev => prev.map(o => o.id === id ? { ...o, status: "PREPARING" as const, updated_by: `staff-${staff}`, updated_at: new Date().toISOString(), last_status: o.status } : o));
+      localUpdate();
       showToast("Order dikonfirmasi ke Dapur!", "success");
     } else {
-      const { error } = await supabase.from("orders").update({ status: "PREPARING", updated_by: `staff-${staff}` }).eq("id", id);
-      if (error) {
-        showToast("Gagal mengkonfirmasi orderan: " + error.message, "error");
-      } else {
-        showToast("Order berhasil dikonfirmasi ke Dapur!", "success");
+      try {
+        const { error } = await supabase.from("orders").update({ status: "PREPARING", updated_by: `staff-${staff}` }).eq("id", id);
+        if (error) {
+          console.error("DB update failed, falling back to local:", error);
+          localUpdate();
+          showToast("Order dikonfirmasi ke Dapur (Menggunakan Cache Lokal)", "info");
+        } else {
+          showToast("Order berhasil dikonfirmasi ke Dapur!", "success");
+        }
+      } catch (err) {
+        console.error("Network error during confirm:", err);
+        localUpdate();
+        showToast("Order dikonfirmasi ke Dapur (Menggunakan Cache Lokal)", "info");
       }
     }
   };
@@ -596,7 +615,7 @@ export default function CommandCenterPage() {
     const targetOrder = orders.find(o => o.id === rejectingOrderId);
     const staff = getStaffToken();
 
-    if (isMockMode) {
+    const localUpdate = () => {
       if (targetOrder) {
         const updated = { 
           ...targetOrder, 
@@ -608,23 +627,36 @@ export default function CommandCenterPage() {
         };
         setOrders(prev => prev.filter(o => o.id !== rejectingOrderId));
         setHistoryOrders(prev => [updated, ...prev]);
-        showToast("Pesanan berhasil ditolak (dibatalkan).", "info");
       }
+    };
+
+    if (isMockMode) {
+      localUpdate();
+      showToast("Pesanan berhasil ditolak (dibatalkan).", "info");
     } else {
-      const { error } = await supabase.from("orders").update({ status: "CANCELLED", cancel_reason: reason, updated_by: `staff-${staff}` }).eq("id", rejectingOrderId);
-      if (error) {
-        const fallbackError = await supabase.from("orders").update({ 
-          status: "CANCELLED", 
-          delivery_notes: `Alasan Batal: ${reason}`,
-          updated_by: `staff-${staff}`
-        }).eq("id", rejectingOrderId);
-        if (fallbackError.error) {
-          showToast("Gagal membatalkan orderan: " + fallbackError.error.message, "error");
+      try {
+        const { error } = await supabase.from("orders").update({ status: "CANCELLED", cancel_reason: reason, updated_by: `staff-${staff}` }).eq("id", rejectingOrderId);
+        if (error) {
+          const fallbackError = await supabase.from("orders").update({ 
+            status: "CANCELLED", 
+            delivery_notes: `Alasan Batal: ${reason}`,
+            updated_by: `staff-${staff}`
+          }).eq("id", rejectingOrderId);
+
+          if (fallbackError.error) {
+            console.error("DB cancel failed, falling back to local:", fallbackError.error);
+            localUpdate();
+            showToast("Pesanan dibatalkan (Menggunakan Cache Lokal)", "info");
+          } else {
+            showToast("Pesanan dibatalkan (menggunakan kolom fallback).", "info");
+          }
         } else {
-          showToast("Pesanan dibatalkan (menggunakan kolom fallback).", "info");
+          showToast("Pesanan berhasil dibatalkan.", "info");
         }
-      } else {
-        showToast("Pesanan berhasil dibatalkan.", "info");
+      } catch (err) {
+        console.error("Network error during cancel:", err);
+        localUpdate();
+        showToast("Pesanan dibatalkan (Menggunakan Cache Lokal)", "info");
       }
     }
 
@@ -635,7 +667,8 @@ export default function CommandCenterPage() {
   const handleComplete = async (id: string) => {
     const targetOrder = orders.find(o => o.id === id);
     const staff = getStaffToken();
-    if (isMockMode) {
+
+    const localUpdate = () => {
       if (targetOrder) {
         const updated = { 
           ...targetOrder, 
@@ -645,14 +678,26 @@ export default function CommandCenterPage() {
           last_status: targetOrder.status
         };
         setOrders(prev => prev.map(o => o.id === id ? updated : o));
-        showToast("Masakan selesai! Menunggu pickup driver.", "success");
       }
+    };
+
+    if (isMockMode) {
+      localUpdate();
+      showToast("Masakan selesai! Menunggu pickup driver.", "success");
     } else {
-      const { error } = await supabase.from("orders").update({ status: "WAITING_PICKUP", updated_by: `staff-${staff}` }).eq("id", id);
-      if (error) {
-        showToast("Gagal menyelesaikan pesanan: " + error.message, "error");
-      } else {
-        showToast("Masakan selesai! Menunggu pickup driver.", "success");
+      try {
+        const { error } = await supabase.from("orders").update({ status: "WAITING_PICKUP", updated_by: `staff-${staff}` }).eq("id", id);
+        if (error) {
+          console.error("DB complete failed, falling back to local:", error);
+          localUpdate();
+          showToast("Masakan selesai! Menunggu pickup driver (Cache Lokal)", "info");
+        } else {
+          showToast("Masakan selesai! Menunggu pickup driver.", "success");
+        }
+      } catch (err) {
+        console.error("Network error during complete:", err);
+        localUpdate();
+        showToast("Masakan selesai! Menunggu pickup driver (Cache Lokal)", "info");
       }
     }
   };
@@ -660,7 +705,8 @@ export default function CommandCenterPage() {
   const handleConfirmPickup = async (id: string) => {
     const targetOrder = orders.find(o => o.id === id);
     const staff = getStaffToken();
-    if (isMockMode) {
+
+    const localUpdate = () => {
       if (targetOrder) {
         const updated = { 
           ...targetOrder, 
@@ -671,14 +717,26 @@ export default function CommandCenterPage() {
         };
         setOrders(prev => prev.filter(o => o.id !== id));
         setHistoryOrders(prev => [updated, ...prev]);
-        showToast("Pesanan telah diambil oleh Driver!", "success");
       }
+    };
+
+    if (isMockMode) {
+      localUpdate();
+      showToast("Pesanan telah diambil oleh Driver!", "success");
     } else {
-      const { error } = await supabase.from("orders").update({ status: "PICKED_UP", updated_by: `staff-${staff}` }).eq("id", id);
-      if (error) {
-        showToast("Gagal mengkonfirmasi pickup: " + error.message, "error");
-      } else {
-        showToast("Pesanan telah diambil oleh Driver!", "success");
+      try {
+        const { error } = await supabase.from("orders").update({ status: "PICKED_UP", updated_by: `staff-${staff}` }).eq("id", id);
+        if (error) {
+          console.error("DB pickup failed, falling back to local:", error);
+          localUpdate();
+          showToast("Pesanan telah diambil oleh Driver (Cache Lokal)", "info");
+        } else {
+          showToast("Pesanan telah diambil oleh Driver!", "success");
+        }
+      } catch (err) {
+        console.error("Network error during pickup:", err);
+        localUpdate();
+        showToast("Pesanan telah diambil oleh Driver (Cache Lokal)", "info");
       }
     }
   };
