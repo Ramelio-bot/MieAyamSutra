@@ -72,7 +72,7 @@ export default function MenuPage() {
           .order("name", { ascending: true });
         
         if (!error && data) {
-          const needsSeeding = data.length < 10 || data.some(item => !item.category);
+          const needsSeeding = data.length !== MOCK_MENUS.length || data.some(item => !item.category);
 
           if (needsSeeding) {
             console.log("Seeding database menus...");

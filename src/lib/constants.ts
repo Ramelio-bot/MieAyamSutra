@@ -691,6 +691,22 @@ export const MOCK_MENUS: MenuItem[] = [
     price: 8000,
     is_available: true,
     category: "Minuman"
+  },
+  {
+    id: "c6_26",
+    name: "Es Teh Tarik",
+    description: "Es teh susu tarik manis segar dingin.",
+    price: 7000,
+    is_available: true,
+    category: "Minuman"
+  },
+  {
+    id: "c6_27",
+    name: "Jeruk Peras Hangat",
+    description: "Jeruk peras murni hangat menyegarkan.",
+    price: 5000,
+    is_available: true,
+    category: "Minuman"
   }
 ];
 
