@@ -11,6 +11,9 @@ const outfit = Outfit({
 export const metadata: Metadata = {
   title: "Mie Ayam Sutra - Premium Salatiga Noodle",
   description: "Mie Halus, Lembut, & Tipis Tradisi Salatiga.",
+  icons: {
+    icon: "https://lh3.googleusercontent.com/d/1T4H6gY6qW3PCsfXdc8cf_PN6Gi3hCXyA",
+  },
 };
 
 export default function RootLayout({
