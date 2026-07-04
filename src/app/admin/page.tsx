@@ -346,17 +346,60 @@ export default function CommandCenterPage() {
           .select("*")
           .order("name", { ascending: true });
         
-        if (!error && data && data.length > 0) {
-          const mappedMenus = data.map(item => ({
-            id: item.id,
-            name: item.name,
-            description: item.description || "",
-            price: Number(item.price),
-            image_url: item.image_url || undefined,
-            is_available: item.is_available,
-            category: (item.category || "Mie Klasik") as MenuItem['category']
-          }));
-          setMenus(mappedMenus);
+        if (!error && data) {
+          const needsSeeding = data.length < 10 || data.some(item => !item.category);
+
+          if (needsSeeding) {
+            await supabase
+              .from("menus")
+              .delete()
+              .neq("id", "00000000-0000-0000-0000-000000000000");
+
+            const menusToInsert = MOCK_MENUS.map(m => ({
+              name: m.name,
+              price: m.price,
+              category: m.category,
+              description: m.description,
+              image_url: m.image_url,
+              is_available: m.is_available
+            }));
+
+            await supabase
+              .from("menus")
+              .insert(menusToInsert);
+
+            const { data: refetchedData } = await supabase
+              .from("menus")
+              .select("*")
+              .order("name", { ascending: true });
+
+            if (refetchedData) {
+              const mappedMenus = refetchedData.map(item => ({
+                id: item.id,
+                name: item.name,
+                description: item.description || "",
+                price: Number(item.price),
+                image_url: item.image_url || undefined,
+                is_available: item.is_available,
+                category: (item.category || "Mie Klasik") as MenuItem['category']
+              }));
+              setMenus(mappedMenus);
+              return;
+            }
+          }
+
+          if (data.length > 0) {
+            const mappedMenus = data.map(item => ({
+              id: item.id,
+              name: item.name,
+              description: item.description || "",
+              price: Number(item.price),
+              image_url: item.image_url || undefined,
+              is_available: item.is_available,
+              category: (item.category || "Mie Klasik") as MenuItem['category']
+            }));
+            setMenus(mappedMenus);
+          }
         }
       } catch (err) {
         console.error("Failed to load menus from Supabase:", err);
