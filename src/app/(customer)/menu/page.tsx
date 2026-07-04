@@ -79,7 +79,7 @@ export default function MenuPage() {
             price: Number(item.price),
             image_url: item.image_url || undefined,
             is_available: item.is_available,
-            category: item.category as MenuItem['category']
+            category: (item.category || "Mie Klasik") as MenuItem['category']
           }));
           setMenus(mappedMenus);
         }

@@ -58,6 +58,26 @@ export default function CustomerLayout({
         return;
       }
 
+      const isMockModeEnv = process.env.NEXT_PUBLIC_MOCK_MODE === "true" || 
+                            !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+                            process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
+
+      if (isMockModeEnv) {
+        if (token === "8888") {
+          if (pathname.startsWith("/admin") || pathname.startsWith("/dapur")) {
+            setSelectedRoute(pathname);
+            setIsModalOpen(false);
+          }
+        } else {
+          sessionStorage.removeItem("sutra_staff_token");
+          if (pathname.startsWith("/admin") || pathname.startsWith("/dapur")) {
+            router.replace("/");
+          }
+        }
+        if (!cancelled) setCheckingSession(false);
+        return;
+      }
+
       try {
         const { data, error } = await supabase.rpc("is_sutra_admin", {
           pin: token,
@@ -106,6 +126,27 @@ export default function CustomerLayout({
     e.preventDefault();
     setErrorMsg("");
     setShouldShake(false);
+
+    const isMockModeEnv = process.env.NEXT_PUBLIC_MOCK_MODE === "true" || 
+                          !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+                          process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
+
+    if (isMockModeEnv) {
+      if (pin === "8888") {
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("sutra_staff_token", pin);
+        }
+        setIsModalOpen(false);
+        router.push(selectedRoute);
+      } else {
+        setShouldShake(true);
+        setErrorMsg("Akses Ditolak. PIN Salah!");
+        setTimeout(() => {
+          setShouldShake(false);
+        }, 500);
+      }
+      return;
+    }
 
     try {
       const { data, error } = await supabase.rpc("is_sutra_admin", {
