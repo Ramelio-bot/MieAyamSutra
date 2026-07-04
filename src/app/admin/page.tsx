@@ -969,14 +969,7 @@ Alamat antar : ${order.delivery_address}
 
 Atas nama : ${order.customer_name}
 
-No penerima : ${order.customer_phone}
-
-Pembayaran cash/transfer: CASH / TALANGAN OJEK ONLINE LOKAL SALATIGA
-(Note : Driver yang nalangi belanjaan kita, nanti driver yang menagih ke konsumen/pembeli di lokasi)
-
-(Note : Jika ada gambar bisa dikirim terpisah dari format ya kak)
-
-_Mohon utk pembayaran transfer silahkan transfer dilakukan setelah mendapat nilai total belanja atau saat barang sudah di terima langsung melakukan pembayaran di depan driver_`;
+No penerima : ${order.customer_phone}`;
 
     navigator.clipboard.writeText(text).then(() => {
       setCopiedId(order.id);
