@@ -444,6 +444,17 @@ export default function CommandCenterPage() {
   }, [isAuthorized]);
 
   // Simulator
+  const generateUUID = () => {
+    if (typeof window !== "undefined" && window.crypto && window.crypto.randomUUID) {
+      return window.crypto.randomUUID();
+    }
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  };
+
   const getStaffToken = () => {
     if (typeof window !== "undefined") {
       return sessionStorage.getItem("sutra_staff_token") || "system";
@@ -691,7 +702,7 @@ export default function CommandCenterPage() {
     if (!menuForm.name.trim() || !menuForm.price) return;
 
     const newMenuItem = {
-      id: "custom_" + Date.now(),
+      id: generateUUID(),
       name: menuForm.name.trim(),
       price: Number(menuForm.price),
       category: menuForm.category as "Mie Klasik" | "Miago" | "Mie Pedas" | "Rice Bowl & Steak" | "Camilan" | "Minuman",
