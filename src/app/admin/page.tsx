@@ -976,13 +976,7 @@ Pembayaran cash/transfer: CASH / TALANGAN OJEK ONLINE LOKAL SALATIGA
 
 (Note : Jika ada gambar bisa dikirim terpisah dari format ya kak)
 
-_Mohon utk pembayaran transfer silahkan transfer dilakukan setelah mendapat nilai total belanja atau saat barang sudah di terima langsung melakukan pembayaran di depan driver_
-
-No rekening dapat pilih salah satu :
-- *0131171837 BCA a/n. _Sri Sahono_*
-- *1513924853 BNI a/n. _PT Jeggboy Inspirasi Indonesia_*
-- *6113017277 Bank Jateng Syariah a/n. _PT Jeggboy inspirasi Indonesia_*
-- *1360081888189 Mandiri a/n. _PT Jeggboy Inspirasi Indonesia_*`;
+_Mohon utk pembayaran transfer silahkan transfer dilakukan setelah mendapat nilai total belanja atau saat barang sudah di terima langsung melakukan pembayaran di depan driver_`;
 
     navigator.clipboard.writeText(text).then(() => {
       setCopiedId(order.id);
