@@ -3,6 +3,7 @@
 import { MOCK_MENUS } from "@/lib/constants";
 import MenuCard from "@/components/customer/MenuCard";
 import CartSheet from "@/components/customer/CartSheet";
+import StickyCartBar from "@/components/customer/StickyCartBar";
 import { useState, useEffect } from "react";
 import { useCart } from "@/hooks/useCart";
 import { useMenu } from "@/hooks/useMenu";
@@ -441,6 +442,7 @@ export default function MenuPage() {
         </div>
       </section>
 
+      <StickyCartBar />
       <CartSheet />
 
       {/* Toasts Container */}
