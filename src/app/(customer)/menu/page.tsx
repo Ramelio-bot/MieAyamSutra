@@ -175,11 +175,33 @@ export default function MenuPage() {
 
     const newErrors: typeof errors = {};
 
-    const totalAmount = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
+    const { isStoreOpen, closedMessage } = useCart.getState();
+
+    if (!isStoreOpen) {
+      newErrors.general = `Kedai sedang tutup: ${closedMessage}`;
+      setErrors(newErrors);
+      setIsSubmitting(false);
+      return;
+    }
+
+    const totalAmount = items.reduce((sum, item) => {
+      const activePrice = item.discount_price || item.price;
+      return sum + (activePrice * item.qty);
+    }, 0);
+    
     if (items.length === 0) {
       newErrors.general = "Keranjang Anda kosong! Silakan tambahkan menu terlebih dahulu.";
     } else if (totalAmount <= 0) {
       newErrors.general = "Total belanja harus lebih dari Rp 0.";
+    } else {
+      // Validate availability
+      const unavailableItems = items.filter(cartItem => {
+        const menuMatch = activeMenus.find(m => m.id === cartItem.id);
+        return !menuMatch || !menuMatch.is_available;
+      });
+      if (unavailableItems.length > 0) {
+        newErrors.general = `Beberapa menu sudah tidak tersedia: ${unavailableItems.map(i => i.name).join(", ")}. Mohon hapus dari keranjang.`;
+      }
     }
 
     if (!formData.name.trim()) {
@@ -224,7 +246,7 @@ export default function MenuPage() {
         id: item.id,
         name: item.name,
         qty: item.qty,
-        price: item.price,
+        price: item.discount_price || item.price,
         notes: item.notes || ""
       })),
       total_amount: totalAmount,
@@ -232,18 +254,31 @@ export default function MenuPage() {
     };
 
     try {
-      const { error } = await supabase.from("orders").insert([orderData]);
-
-      if (error) {
-        showToast("Gagal mengirim pesanan: " + error.message, "error");
+      const isMock = process.env.NEXT_PUBLIC_MOCK_MODE === "true" || !process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
+      
+      if (isMock) {
+        const stored = localStorage.getItem("mock_orders");
+        let allOrders = stored ? JSON.parse(stored) : [];
+        allOrders.unshift({
+          ...orderData,
+          id: "mock-" + Date.now(),
+          shortId: String(Math.floor(Math.random() * 9000) + 1000),
+          time: new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB",
+          created_at: new Date().toISOString()
+        });
+        localStorage.setItem("mock_orders", JSON.stringify(allOrders));
       } else {
-        clearCart();
-        setFormData({ name: "", phone: "", address: "" });
-        localStorage.setItem("last_order_timestamp", Date.now().toString());
-        setCooldownSeconds(60);
-        showToast("Pesanan berhasil dikirim!", "success");
-        setShowSuccessModal(true);
+        const { error } = await supabase.from("orders").insert([orderData]);
+        if (error) throw error;
       }
+
+      clearCart();
+      setFormData({ name: "", phone: "", address: "" });
+      localStorage.setItem("last_order_timestamp", Date.now().toString());
+      setCooldownSeconds(60);
+      showToast("Pesanan berhasil dikirim!", "success");
+      setShowSuccessModal(true);
+      
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       showToast("Terjadi kesalahan jaringan: " + errMsg, "error");

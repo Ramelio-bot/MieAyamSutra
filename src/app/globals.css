@@ -1,25 +1,39 @@
 @import "tailwindcss";
 
 @theme {
-  --color-charcoal: #18181b; /* zinc-900 */
-  --color-gold: #D97706;     /* amber-600 / gold */
-  --color-kitchen-bg: #09090b; /* zinc-950 */
-  --color-kitchen-text: #fafafa; /* zinc-50 */
-  --color-offwhite: #fafafa;  /* zinc-50 */
+  /* Warm Culinary Palette */
+  --color-charcoal: #1C1917; /* Warm Dark (Stone-900) instead of #18181b */
+  --color-gold: #D97706;     
+  --color-kitchen-bg: #09090b; 
+  --color-kitchen-text: #fafafa; 
+  --color-offwhite: #FAFAF9; /* Warm Cream instead of #fafafa */
   
-  --font-sans: var(--font-outfit);
+  /* Retain specific aliases if needed */
+  --color-warm-white: #FAFAF9;
+  --color-warm-charcoal: #1C1917;
+  --color-warm-soft: #FDFBF7;
+  
+  --font-outfit: var(--font-outfit), sans-serif;
+  --font-pjs: var(--font-pjs), sans-serif;
+  
+  --font-sans: var(--font-pjs);
 }
 
 @layer base {
   :root {
-    --background: #ffffff;
-    --foreground: var(--color-charcoal);
+    --background: #FAFAF9;
+    --foreground: var(--color-warm-charcoal);
   }
 
   /* Kitchen Display System specifically needs a dark mode */
   .dapur-mode {
     --background: var(--color-kitchen-bg);
     --foreground: var(--color-kitchen-text);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-outfit);
+    letter-spacing: -0.025em;
   }
 }
 

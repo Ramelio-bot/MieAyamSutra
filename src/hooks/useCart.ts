@@ -16,11 +16,18 @@ interface CartState {
   openCart: () => void;
   closeCart: () => void;
   toggleCart: () => void;
+  isStoreOpen: boolean;
+  closedMessage: string;
+  setStoreStatus: (isOpen: boolean, message: string) => void;
 }
 
 export const useCart = create<CartState>((set, get) => ({
   items: [],
   isCartOpen: false,
+  isStoreOpen: true,
+  closedMessage: "Maaf, kedai sedang tutup.",
+
+  setStoreStatus: (isOpen, message) => set({ isStoreOpen: isOpen, closedMessage: message }),
 
   hydrate: () => {
     if (typeof window === 'undefined') return;
@@ -99,10 +106,31 @@ export const useCart = create<CartState>((set, get) => ({
   },
 
   getTotalPrice: () => {
-    return get().items.reduce((total, item) => total + (item.price * item.qty), 0);
+    return get().items.reduce((total, item) => {
+      const activePrice = item.discount_price || item.price;
+      return total + (activePrice * item.qty);
+    }, 0);
   },
 
   openCart: () => set({ isCartOpen: true }),
   closeCart: () => set({ isCartOpen: false }),
   toggleCart: () => set((state) => ({ isCartOpen: !state.isCartOpen }))
 }));
+
+// Cross-tab synchronization for Cart
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'sutra_cart') {
+      try {
+        if (!e.newValue) {
+          useCart.setState({ items: [] });
+          return;
+        }
+        const parsed = JSON.parse(e.newValue);
+        useCart.setState({ items: parsed });
+      } catch (err) {
+        console.error("Failed to parse sutra_cart from storage event", err);
+      }
+    }
+  });
+}

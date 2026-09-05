@@ -12,17 +12,17 @@ export default function CustomerLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { getTotalItems, toggleCart } = useCart();
+  const { getTotalItems, toggleCart, isStoreOpen, closedMessage } = useCart();
   const totalItems = getTotalItems();
   const router = useRouter();
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedRoute, setSelectedRoute] = useState<string>("");
-  const [pin, setPin] = useState("");
-  const [errorMsg, setErrorMsg] = useState("");
-  const [shouldShake, setShouldShake] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
+  
+  // Unified Session State
+  const [userRole, setUserRole] = useState<"admin" | "member" | null>(null);
+  const [userName, setUserName] = useState<string>("");
+  
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on click outside
@@ -40,158 +40,98 @@ export default function CustomerLayout({
     };
   }, []);
 
-  // Restore admin session and guard admin routes
+  // Restore Unified Session
   useEffect(() => {
     if (typeof window === "undefined") return;
-
     let cancelled = false;
 
     async function restore() {
-      const token = sessionStorage.getItem("sutra_staff_token");
+      const adminToken = sessionStorage.getItem("sutra_staff_token");
+      const memberPhone = localStorage.getItem("sutra_member_phone");
+      const memberPin = localStorage.getItem("sutra_member_pin");
       const pathname = window.location.pathname || "";
 
-      if (!token) {
-        if (pathname.startsWith("/admin") || pathname.startsWith("/dapur")) {
-          router.replace("/");
-        }
+      // 1. Check Admin Session
+      if (adminToken) {
+        setUserRole("admin");
+        setUserName("Staf Admin");
         if (!cancelled) setCheckingSession(false);
         return;
       }
 
-      // Hardcoded safety bypass for live emergency session restore
-      if (token === "9399" || token === "8888") {
-        if (pathname.startsWith("/admin") || pathname.startsWith("/dapur")) {
-          setSelectedRoute(pathname);
-          setIsModalOpen(false);
+      // 2. Check Member Session
+      if (memberPhone && memberPin) {
+        setUserRole("member");
+        const isMockMode = !process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
+        
+        if (isMockMode) {
+          const mockStr = localStorage.getItem(`mock_member_${memberPhone}`);
+          if (mockStr) {
+            setUserName(JSON.parse(mockStr).name.split(" ")[0]);
+          } else {
+            setUserName("Member");
+          }
+          if (!cancelled) setCheckingSession(false);
+          return;
         }
+
+        try {
+          const { data } = await supabase.rpc("verify_member_pin", { p_phone: memberPhone, p_pin: memberPin });
+          if (data && data.length > 0) {
+            setUserName(data[0].name.split(" ")[0]);
+          } else {
+            localStorage.removeItem("sutra_member_phone");
+            localStorage.removeItem("sutra_member_pin");
+          }
+        } catch {}
+        
+        setUserRole("member");
         if (!cancelled) setCheckingSession(false);
         return;
       }
 
-      const isMockModeEnv = process.env.NEXT_PUBLIC_MOCK_MODE === "true" || 
-                            !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-                            process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
-
-      if (isMockModeEnv) {
-        if (token === "8888" || token === "9399") {
-          if (pathname.startsWith("/admin") || pathname.startsWith("/dapur")) {
-            setSelectedRoute(pathname);
-            setIsModalOpen(false);
-          }
-        } else {
-          sessionStorage.removeItem("sutra_staff_token");
-          if (pathname.startsWith("/admin") || pathname.startsWith("/dapur")) {
-            router.replace("/");
-          }
-        }
-        if (!cancelled) setCheckingSession(false);
-        return;
+      // 3. No Session
+      setUserRole(null);
+      if (pathname.startsWith("/admin") || pathname.startsWith("/dapur")) {
+        router.replace("/");
       }
-
-      try {
-        const { data, error } = await supabase.rpc("is_sutra_admin", {
-          pin: token,
-        });
-
-        if (!cancelled) {
-          if (error || !data) {
-            sessionStorage.removeItem("sutra_staff_token");
-            if (pathname.startsWith("/admin") || pathname.startsWith("/dapur")) {
-              router.replace("/");
-            }
-          } else if (pathname.startsWith("/admin") || pathname.startsWith("/dapur")) {
-            setSelectedRoute(pathname);
-            setIsModalOpen(false);
-          }
-          setCheckingSession(false);
-        }
-      } catch {
-        if (!cancelled) {
-          sessionStorage.removeItem("sutra_staff_token");
-          if (pathname.startsWith("/admin") || pathname.startsWith("/dapur")) {
-            router.replace("/");
-          }
-          setCheckingSession(false);
-        }
-      }
+      if (!cancelled) setCheckingSession(false);
     }
 
     restore();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [router]);
 
-  const handleOpenLogin = (route: string) => {
-    setSelectedRoute(route);
-    setIsDropdownOpen(false);
-    setPin("");
-    setErrorMsg("");
-    setShouldShake(false);
-    setIsModalOpen(true);
-  };
-
-  const handleSubmitPin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg("");
-    setShouldShake(false);
-
-    // Hardcoded safety bypass for live emergency login
-    if (pin === "9399" || pin === "8888") {
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem("sutra_staff_token", pin);
-      }
-      setIsModalOpen(false);
-      router.push(selectedRoute);
-      return;
-    }
-
-    const isMockModeEnv = process.env.NEXT_PUBLIC_MOCK_MODE === "true" || 
-                          !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-                          process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
-
-    if (isMockModeEnv) {
-      if (pin === "8888" || pin === "9399") {
-        if (typeof window !== "undefined") {
-          sessionStorage.setItem("sutra_staff_token", pin);
+  // Fetch Store Status
+  useEffect(() => {
+    const fetchStatus = async () => {
+      const isMockMode = !process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
+      if (isMockMode) {
+        const status = localStorage.getItem("mock_store_status");
+        if (status) {
+          const parsed = JSON.parse(status);
+          useCart.getState().setStoreStatus(parsed.is_open, parsed.closed_message);
+        } else {
+          useCart.getState().setStoreStatus(true, "Maaf, kedai sedang tutup.");
         }
-        setIsModalOpen(false);
-        router.push(selectedRoute);
-      } else {
-        setShouldShake(true);
-        setErrorMsg("Akses Ditolak. PIN Salah!");
-        setTimeout(() => {
-          setShouldShake(false);
-        }, 500);
-      }
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase.rpc("is_sutra_admin", {
-        pin,
-      });
-
-      if (error || !data) {
-        setShouldShake(true);
-        setErrorMsg("Akses Ditolak. PIN Salah!");
-        setTimeout(() => {
-          setShouldShake(false);
-        }, 500);
         return;
       }
 
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem("sutra_staff_token", pin);
+      const { data } = await supabase.from("store_settings").select("*").eq("id", 1).single();
+      if (data) {
+        useCart.getState().setStoreStatus(data.is_open, data.closed_message);
       }
-      setIsModalOpen(false);
-      router.push(selectedRoute);
-    } catch {
-      setShouldShake(true);
-      setErrorMsg("Gagal memverifikasi PIN. Coba lagi.");
-      setTimeout(() => setShouldShake(false), 500);
-    }
+    };
+    fetchStatus();
+  }, []);
+
+  const handleLogout = () => {
+    sessionStorage.removeItem("sutra_staff_token");
+    localStorage.removeItem("sutra_member_phone");
+    localStorage.removeItem("sutra_member_pin");
+    setUserRole(null);
+    setIsDropdownOpen(false);
+    router.push("/");
   };
 
   if (checkingSession) {
@@ -220,6 +160,11 @@ export default function CustomerLayout({
 
   return (
     <div className="min-h-screen bg-offwhite flex flex-col justify-between">
+      {!isStoreOpen && (
+        <div className="bg-red-600 text-white py-2 px-4 text-center text-xs sm:text-sm font-bold uppercase tracking-widest z-50">
+          {closedMessage}
+        </div>
+      )}
       {/* Header / Navbar Ala Crav Burgers */}
       <header className="sticky top-0 z-40 w-full bg-white/90 backdrop-blur-md border-b border-gray-100">
         <div className="container mx-auto px-4 lg:px-8 py-5 flex items-center justify-between">
@@ -247,15 +192,64 @@ export default function CustomerLayout({
           </nav>
 
           {/* Cart & Staff Portal Right */}
-          <div className="flex-shrink-0 flex items-center gap-4">
-            {/* Staff Portal Button */}
-            <button
-              onClick={() => handleOpenLogin("/admin")}
-              className="p-2 text-charcoal hover:text-gold transition-colors flex items-center justify-center border border-zinc-200 hover:border-zinc-300 rounded-full bg-white shadow-xs"
-              title="Portal Operasional Staff"
-            >
-              <Lock size={18} strokeWidth={2.5} />
-            </button>
+          <div className="flex-shrink-0 flex items-center gap-2 sm:gap-4">
+            
+            {/* Unified Login Portal */}
+            <div className="relative" ref={dropdownRef}>
+              {userRole ? (
+                <button
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  className="px-4 py-2 text-charcoal hover:text-gold transition-colors flex items-center justify-center border border-zinc-200 hover:border-zinc-300 rounded-full bg-white shadow-xs gap-2"
+                >
+                  <div className="w-6 h-6 bg-gold/20 text-gold rounded-full flex items-center justify-center text-xs font-black">
+                    {userName.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="text-xs font-bold uppercase tracking-wider hidden sm:block">
+                    {userName}
+                  </span>
+                </button>
+              ) : (
+                <Link
+                  href="/member"
+                  className="px-4 py-2 text-white bg-charcoal hover:bg-zinc-800 transition-colors flex items-center justify-center rounded-full shadow-xs gap-2"
+                >
+                  <Lock size={14} strokeWidth={2.5} />
+                  <span className="text-xs font-bold uppercase tracking-wider hidden sm:block">
+                    Masuk / Daftar
+                  </span>
+                </Link>
+              )}
+
+              {/* Profile Dropdown */}
+              {isDropdownOpen && userRole && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-zinc-100 overflow-hidden z-50">
+                  <div className="p-4 border-b border-zinc-50 bg-zinc-50/50">
+                    <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Halo,</p>
+                    <p className="font-black text-charcoal truncate">{userName}</p>
+                  </div>
+                  <div className="p-2 flex flex-col gap-1">
+                    {userRole === "admin" ? (
+                      <>
+                        <Link href="/admin" onClick={() => setIsDropdownOpen(false)} className="px-4 py-2 text-xs font-bold text-charcoal hover:bg-zinc-50 rounded-lg transition-colors">Dashboard Admin</Link>
+                        <Link href="/kds" onClick={() => setIsDropdownOpen(false)} className="px-4 py-2 text-xs font-bold text-charcoal hover:bg-zinc-50 rounded-lg transition-colors flex justify-between items-center">
+                          Layar Dapur (KDS)
+                          <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></span>
+                        </Link>
+                        <Link href="/admin/scan" onClick={() => setIsDropdownOpen(false)} className="px-4 py-2 text-xs font-bold text-charcoal hover:bg-zinc-50 rounded-lg transition-colors">Kasir Scanner</Link>
+                      </>
+                    ) : (
+                      <>
+                        <Link href="/member" onClick={() => setIsDropdownOpen(false)} className="px-4 py-2 text-xs font-bold text-charcoal hover:bg-zinc-50 rounded-lg transition-colors">Kartu Stamp Saya</Link>
+                        <Link href="/member/rewards" onClick={() => setIsDropdownOpen(false)} className="px-4 py-2 text-xs font-bold text-charcoal hover:bg-zinc-50 rounded-lg transition-colors">Kupon & Reward</Link>
+                        <Link href="/member/history" onClick={() => setIsDropdownOpen(false)} className="px-4 py-2 text-xs font-bold text-charcoal hover:bg-zinc-50 rounded-lg transition-colors">Riwayat Pesanan</Link>
+                      </>
+                    )}
+                    <div className="h-px bg-zinc-100 my-1"></div>
+                    <button onClick={handleLogout} className="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-50 rounded-lg transition-colors">Keluar</button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             <button 
               onClick={toggleCart}
@@ -314,61 +308,6 @@ export default function CustomerLayout({
         </div>
       </footer>
 
-      {/* Password PIN Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-charcoal/45 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className={`bg-white rounded-[2rem] max-w-sm w-full p-8 border border-zinc-150 shadow-2xl relative ${shouldShake ? 'animate-shake' : ''}`}>
-            <button 
-              onClick={() => setIsModalOpen(false)}
-              className="absolute top-6 right-6 text-zinc-400 hover:text-charcoal transition-colors p-1"
-            >
-              <X size={20} />
-            </button>
-            
-            <div className="text-center space-y-2 mb-6">
-              <div className="w-12 h-12 bg-gold/10 text-gold rounded-full flex items-center justify-center mx-auto">
-                <Lock size={22} />
-              </div>
-              <h3 className="text-xl font-black text-charcoal uppercase tracking-tight">Verifikasi PIN Staf</h3>
-              <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider">
-                Akses Terbatas ke Pusat Kendali Operasional
-              </p>
-            </div>
-
-            <form onSubmit={handleSubmitPin} className="space-y-6">
-              <div className="space-y-2">
-                <input
-                  type="password"
-                  maxLength={4}
-                  value={pin}
-                  onChange={(e) => {
-                    setPin(e.target.value.replace(/\D/g, ""));
-                    if (errorMsg) setErrorMsg("");
-                  }}
-                  placeholder="••••"
-                  className={`w-full text-center text-3xl tracking-[0.5em] font-black py-4 border-b-2 bg-transparent focus:outline-none transition-all ${
-                    errorMsg ? "border-red-500 text-red-500 animate-pulse" : "border-zinc-300 focus:border-zinc-900 text-charcoal"
-                  }`}
-                  autoFocus
-                />
-                {errorMsg && (
-                  <p className="text-center text-xs font-bold text-red-500 uppercase tracking-wider animate-pulse pt-1">
-                    {errorMsg}
-                  </p>
-                )}
-              </div>
-
-              <button
-                type="submit"
-                disabled={pin.length < 4}
-                className="w-full bg-charcoal hover:bg-gold text-white hover:text-charcoal font-black py-4 rounded-xl text-xs uppercase tracking-widest transition-all disabled:opacity-50 disabled:hover:bg-charcoal disabled:hover:text-white shadow-md"
-              >
-                Masuk Portal
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

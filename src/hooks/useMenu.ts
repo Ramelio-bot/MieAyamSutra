@@ -100,3 +100,19 @@ export const useMenu = create<MenuState>((set) => {
     }
   };
 });
+
+// Cross-tab synchronization for Mock Mode
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'sutra_menus' && e.newValue) {
+      try {
+        const parsed = JSON.parse(e.newValue);
+        useMenu.setState({ menus: parsed });
+      } catch (err) {
+        console.error("Failed to parse sutra_menus from storage event", err);
+      }
+    } else if (e.key === 'sutra_menus' && !e.newValue) {
+      useMenu.setState({ menus: MOCK_MENUS });
+    }
+  });
+}

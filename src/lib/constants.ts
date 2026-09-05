@@ -501,6 +501,15 @@ export const MOCK_MENUS: MenuItem[] = [
     category: "Minuman"
   },
   {
+    id: "3",
+    name: "Mie Meriam",
+    price: 20000,
+    discount_price: 17000,
+    category: "Mie Pedas",
+    description: "Mie pedas mampus dengan cabai rawit merah.",
+    is_available: true
+  },
+  {
     id: "c6_2",
     name: "Air Es",
     description: "Air es segar dingin.",

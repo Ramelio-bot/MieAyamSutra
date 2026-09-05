@@ -117,7 +117,7 @@ const MOCK_HISTORY_ORDERS: Order[] = [
 export default function CommandCenterPage() {
   const router = useRouter();
   const [isAuthorized, setIsAuthorized] = useState(false);
-  const [activeTab, setActiveTab] = useState<"monitor" | "pickup" | "laporan" | "kelola">("monitor");
+  const [activeTab, setActiveTab] = useState<"laporan" | "kelola">("laporan");
   const [orders, setOrders] = useState<Order[]>([]);
   const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
   const [isMockMode, setIsMockMode] = useState(true);
@@ -144,6 +144,7 @@ export default function CommandCenterPage() {
   const [cancelReason, setCancelReason] = useState("");
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [reportFilter, setReportFilter] = useState<"ALL" | "SUCCESS" | "CANCELLED">("ALL");
+  const [recapModalType, setRecapModalType] = useState<"OMZET" | "PORSI" | "BATAL" | null>(null);
   
   // Menu Management states
   const { menus, setMenus, addMenu, toggleAvailability, deleteMenu, resetMenus, updateMenuImage, updateMenuItem } = useMenu();
@@ -308,16 +309,31 @@ export default function CommandCenterPage() {
                           !process.env.NEXT_PUBLIC_SUPABASE_URL ||
                           process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
     
-    setTimeout(() => {
-      setIsMockMode(isMockModeEnv);
-      if (isMockModeEnv) {
-        setOrders([...MOCK_PENDING_ORDERS, ...MOCK_PREPARING_ORDERS]);
-        setHistoryOrders(MOCK_HISTORY_ORDERS);
-      }
-    }, 0);
+    setIsMockMode(isMockModeEnv);
 
     if (isMockModeEnv) {
-      return;
+      const loadAdminMock = () => {
+        const stored = localStorage.getItem("mock_orders");
+        if (stored) {
+          const allOrders = JSON.parse(stored);
+          setOrders(allOrders.filter((o: any) => o.status === "PENDING" || o.status === "PREPARING" || o.status === "WAITING_PICKUP"));
+          setHistoryOrders(allOrders.filter((o: any) => o.status === "PICKED_UP" || o.status === "CANCELLED"));
+        } else {
+          const initialMock = [...MOCK_PENDING_ORDERS, ...MOCK_PREPARING_ORDERS, ...MOCK_HISTORY_ORDERS];
+          setOrders([...MOCK_PENDING_ORDERS, ...MOCK_PREPARING_ORDERS]);
+          setHistoryOrders(MOCK_HISTORY_ORDERS);
+          localStorage.setItem("mock_orders", JSON.stringify(initialMock));
+        }
+      };
+      
+      loadAdminMock();
+      
+      const handleStorageChange = (e: StorageEvent) => {
+        if (e.key === "mock_orders") loadAdminMock();
+      };
+      window.addEventListener("storage", handleStorageChange);
+      
+      return () => window.removeEventListener("storage", handleStorageChange);
     }
 
     // Fetch initial active pending, preparing & waiting_pickup orders
@@ -555,7 +571,13 @@ export default function CommandCenterPage() {
         created_at: now.toISOString(),
         ...mockOrderData
       };
+      
+      const stored = localStorage.getItem("mock_orders");
+      const allOrders = stored ? JSON.parse(stored) : [...orders, ...historyOrders];
+      localStorage.setItem("mock_orders", JSON.stringify([newOrder, ...allOrders]));
+
       setOrders(prev => [newOrder, ...prev]);
+      
       showToast("Order simulasi berhasil ditambahkan!", "success");
       if (targetStatus === "PENDING" && !isMuted) {
         playSubtleChime();
@@ -614,7 +636,7 @@ export default function CommandCenterPage() {
   const handleConfirmCancel = async () => {
     if (!rejectingOrderId) return;
     const reason = cancelReason.trim() || "Tidak ada alasan spesifik";
-    const targetOrder = orders.find(o => o.id === rejectingOrderId);
+    const targetOrder = orders.find(o => o.id === rejectingOrderId) || historyOrders.find(o => o.id === rejectingOrderId);
     const staff = getStaffToken();
 
     const localUpdate = () => {
@@ -628,7 +650,17 @@ export default function CommandCenterPage() {
           last_status: targetOrder.status
         };
         setOrders(prev => prev.filter(o => o.id !== rejectingOrderId));
-        setHistoryOrders(prev => [updated, ...prev]);
+        setHistoryOrders(prev => [updated, ...prev.filter(o => o.id !== rejectingOrderId)]);
+
+        // Sync with mock_orders if in mock mode
+        if (isMockMode) {
+          const stored = localStorage.getItem("mock_orders");
+          if (stored) {
+            const allOrders = JSON.parse(stored);
+            const updatedAll = allOrders.map((o: any) => o.id === rejectingOrderId ? updated : o);
+            localStorage.setItem("mock_orders", JSON.stringify(updatedAll));
+          }
+        }
       }
     };
 
@@ -1087,26 +1119,7 @@ No penerima : ${order.customer_phone}`;
 
       {/* Tab bar switch */}
       <div className="flex border-b border-zinc-200 bg-white shrink-0 px-6 overflow-x-auto whitespace-nowrap flex-nowrap scrollbar-none">
-        <button
-          onClick={() => setActiveTab("monitor")}
-          className={`py-3.5 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex-none shrink-0 ${
-            activeTab === "monitor"
-              ? "border-charcoal text-charcoal"
-              : "border-transparent text-zinc-400 hover:text-zinc-650"
-          }`}
-        >
-          Monitor Operasional ({orders.filter(o => o.status === "PENDING" || o.status === "PREPARING").length})
-        </button>
-        <button
-          onClick={() => setActiveTab("pickup")}
-          className={`py-3.5 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex-none shrink-0 ${
-            activeTab === "pickup"
-              ? "border-charcoal text-charcoal"
-              : "border-transparent text-zinc-400 hover:text-zinc-650"
-          }`}
-        >
-          Status Pickup Driver ({orders.filter(o => o.status === "WAITING_PICKUP").length})
-        </button>
+
         <button
           onClick={() => setActiveTab("kelola")}
           className={`py-3.5 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex-none shrink-0 ${
@@ -1127,390 +1140,42 @@ No penerima : ${order.customer_phone}`;
         >
           Laporan Penjualan ({historyOrders.length})
         </button>
+
+        {/* Shortcuts */}
+        <div className="ml-auto flex items-center gap-2 py-2">
+          {isMockMode && (
+            <button 
+              onClick={() => {
+                if (confirm("Reset semua data pesanan simulasi menjadi kosong?")) {
+                  localStorage.setItem("mock_orders", JSON.stringify([]));
+                  localStorage.removeItem("last_order_timestamp");
+                  window.location.reload();
+                }
+              }}
+              className="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-1.5 border border-red-200"
+            >
+              🗑️ Reset Data
+            </button>
+          )}
+          <Link href="/kds" className="px-4 py-2 bg-charcoal text-white hover:bg-gold hover:text-charcoal rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-1.5 shadow-sm">
+            🖥️ KDS Dapur
+          </Link>
+          <Link href="/admin/scan" className="px-4 py-2 bg-white text-zinc-600 hover:text-charcoal hover:bg-zinc-50 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-1.5 border border-zinc-200">
+            📷 Kasir Scanner
+          </Link>
+          <Link href="/admin/settings" className="px-4 py-2 bg-white text-zinc-600 hover:text-charcoal hover:bg-zinc-50 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-1.5 border border-zinc-200">
+            ⚙️ Buka / Tutup
+          </Link>
+          <Link href="/admin/rewards-setting" className="px-4 py-2 bg-white text-zinc-600 hover:text-charcoal hover:bg-zinc-50 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-1.5 border border-zinc-200">
+            🎁 Reward
+          </Link>
+        </div>
       </div>
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-hidden relative">
         
-        {activeTab === "monitor" ? (
-          /* MONITOR TAB: Split screen */
-          <div className="h-full flex overflow-hidden">
-            
-            {/* LEFT COLUMN: Admin Verification (Light Mode) */}
-            <section className="w-1/2 bg-zinc-50 border-r border-zinc-200 flex flex-col h-full overflow-hidden">
-              <div className="p-4 px-6 border-b border-zinc-200 flex justify-between items-center bg-white shrink-0">
-                <h2 className="text-sm font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                  <span>Antrean Pesanan Baru</span>
-                  <span className="bg-zinc-100 text-zinc-800 border border-zinc-200 text-[10px] px-2 py-0.5 rounded-md font-extrabold">
-                    {pendingOrders.length}
-                  </span>
-                </h2>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Lakukan Validasi</span>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {pendingOrders.length === 0 ? (
-                  <div className="h-64 flex flex-col items-center justify-center text-zinc-400 space-y-3">
-                    <ShoppingBag size={36} strokeWidth={1.5} />
-                    <p className="text-xs font-bold tracking-widest uppercase">Tidak ada pesanan baru</p>
-                  </div>
-                ) : (
-                  pendingOrders.map((order) => (
-                    <div 
-                      key={order.id}
-                      className="bg-white rounded-[1.5rem] border border-zinc-200 shadow-xs flex flex-col justify-between overflow-hidden"
-                    >
-                      <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/40">
-                        <h3 className="text-lg font-black text-zinc-800">#{order.shortId}</h3>
-                        <span className="bg-zinc-200 text-zinc-650 text-[9px] font-extrabold px-1.5 py-0.5 rounded tracking-wide">
-                          {order.time}
-                        </span>
-                      </div>
-
-                      <div className="p-4 space-y-4 text-xs">
-                        <div className="space-y-2.5">
-                          {order.items.map((item, idx) => (
-                            <div key={idx} className="flex items-start gap-2 pb-2 border-b border-zinc-100/50 last:border-0 last:pb-0">
-                              <span className="font-extrabold text-gold">{item.qty}x</span>
-                              <div className="flex-1">
-                                <span className="font-bold text-zinc-800 uppercase tracking-tight block">{item.name}</span>
-                                {item.notes && <span className="text-[10px] font-bold text-zinc-400 block italic">Catatan: {item.notes}</span>}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="pt-3 border-t border-zinc-100 space-y-1.5 text-zinc-600">
-                          <div>
-                            <span className="text-[9px] font-bold uppercase text-zinc-400 block tracking-wider">Konsumen</span>
-                            <span className="font-extrabold text-zinc-750 uppercase">{order.customer_name} ({order.customer_phone})</span>
-                          </div>
-                          <div>
-                            <span className="text-[9px] font-bold uppercase text-zinc-400 block tracking-wider">Alamat Kirim</span>
-                            <span className="font-semibold text-zinc-500 leading-normal">{order.delivery_address}</span>
-                          </div>
-                          {order.updated_at && (
-                            <div className="mt-2 pt-2 border-t border-dashed border-zinc-150 text-[10px] text-zinc-455 space-y-0.5 font-medium leading-normal">
-                              <div className="flex justify-between">
-                                <span className="text-[9px] font-bold uppercase text-zinc-400">Diperbarui:</span>
-                                <span>{new Date(order.updated_at).toLocaleString("id-ID")}</span>
-                              </div>
-                              {order.updated_by && (
-                                <div className="flex justify-between">
-                                  <span className="text-[9px] font-bold uppercase text-zinc-400">Oleh:</span>
-                                  <span className="uppercase">{order.updated_by}</span>
-                                </div>
-                              )}
-                              {order.last_status && (
-                                <div className="flex justify-between">
-                                  <span className="text-[9px] font-bold uppercase text-zinc-400">Status Awal:</span>
-                                  <span className="font-extrabold text-gold uppercase">{order.last_status}</span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          <div className="flex justify-between items-center pt-2">
-                            <span className="text-[10px] font-extrabold text-zinc-700 uppercase">Total Harga</span>
-                            <span className="font-black text-sm text-zinc-900">{formatRupiah(order.total_amount)}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="p-4 bg-zinc-50/50 border-t border-zinc-100 flex gap-2">
-                        <button 
-                          onClick={() => handleConfirm(order.id)}
-                          className="flex-1 bg-charcoal text-white hover:bg-gold hover:text-charcoal font-black py-2.5 rounded-lg text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-1 shadow-xs"
-                        >
-                          <Check size={12} /> Kirim Dapur
-                        </button>
-                        <button 
-                          onClick={() => handleCancel(order.id)}
-                          className="bg-transparent hover:bg-red-50 text-red-600 border border-zinc-200 hover:border-red-200 font-bold py-2.5 px-3 rounded-lg text-[10px] uppercase tracking-widest transition-all"
-                        >
-                          Tolak
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
-
-            {/* RIGHT COLUMN: Kitchen Monitor (Dark Mode KDS) */}
-            <section className="w-1/2 bg-zinc-900 flex flex-col h-full overflow-hidden text-zinc-200">
-              <div className="p-4 px-6 border-b border-zinc-850 flex justify-between items-center bg-zinc-950 shrink-0">
-                <h2 className="text-sm font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                  <span>Monitor Memasak (KDS)</span>
-                  <span className="bg-red-500/10 text-red-400 border border-red-500/20 text-[10px] px-2 py-0.5 rounded-md font-extrabold">
-                    {preparingOrders.length}
-                  </span>
-                </h2>
-                <span className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider">Antrean Dapur</span>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {preparingOrders.length === 0 ? (
-                  <div className="h-64 flex flex-col items-center justify-center text-zinc-600 space-y-3">
-                    <span className="text-3xl">🍲</span>
-                    <p className="text-xs font-bold tracking-widest uppercase">Semua masakan selesai</p>
-                  </div>
-                ) : (
-                  preparingOrders.map((order) => (
-                    <div 
-                      key={order.id}
-                      className="bg-zinc-950 rounded-[1.5rem] border-2 border-zinc-850 flex flex-col justify-between overflow-hidden"
-                    >
-                      <div className="p-4 border-b border-zinc-850 flex items-center justify-between bg-zinc-900/50">
-                        <h3 className="text-xl font-black text-white">#{order.shortId}</h3>
-                        <span className="bg-zinc-800 text-zinc-300 text-[9px] font-extrabold px-1.5 py-0.5 rounded tracking-wide">
-                          {order.time}
-                        </span>
-                      </div>
-
-                      <div className="p-4 space-y-5">
-                        <div className="space-y-3.5">
-                          {order.items.map((item, idx) => (
-                            <div key={idx} className="flex items-start gap-3 pb-3 border-b border-zinc-900 last:border-0 last:pb-0">
-                              <span className="text-xl font-black text-gold leading-none">{item.qty}x</span>
-                              <div className="flex-1">
-                                <span className="text-lg font-black text-zinc-100 uppercase tracking-tight leading-tight block">{item.name}</span>
-                                {item.notes && (
-                                  <span className="text-xs font-black text-amber-400 block tracking-wide bg-amber-500/10 py-1 px-2.5 rounded-lg border border-amber-500/20 mt-1">
-                                    CATATAN: {item.notes}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="pt-4 border-t border-zinc-900 space-y-2 text-xs text-zinc-400">
-                          <div>
-                            <span className="text-[9px] font-bold uppercase text-zinc-550 block tracking-wider">Pelanggan</span>
-                            <span className="font-extrabold text-zinc-200 uppercase text-sm">{order.customer_name} ({order.customer_phone})</span>
-                          </div>
-                          <div>
-                            <span className="text-[9px] font-bold uppercase text-zinc-550 block tracking-wider">Alamat</span>
-                            <span className="font-semibold text-zinc-300 leading-normal">{order.delivery_address}</span>
-                          </div>
-                          {order.updated_at && (
-                            <div className="mt-2.5 pt-2.5 border-t border-dashed border-zinc-800 text-[10px] text-zinc-400 space-y-0.5 font-medium leading-normal">
-                              <div className="flex justify-between">
-                                <span className="text-[9px] font-bold uppercase text-zinc-555">Diperbarui:</span>
-                                <span>{new Date(order.updated_at).toLocaleString("id-ID")}</span>
-                              </div>
-                              {order.updated_by && (
-                                <div className="flex justify-between">
-                                  <span className="text-[9px] font-bold uppercase text-zinc-555">Oleh:</span>
-                                  <span className="uppercase">{order.updated_by}</span>
-                                </div>
-                              )}
-                              {order.last_status && (
-                                <div className="flex justify-between">
-                                  <span className="text-[9px] font-bold uppercase text-zinc-555">Status Awal:</span>
-                                  <span className="font-extrabold text-gold uppercase">{order.last_status}</span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="p-4 bg-zinc-900/40 border-t border-zinc-900 flex flex-col gap-2">
-                        <button 
-                          onClick={() => handleComplete(order.id)}
-                          className="w-full bg-gold hover:bg-yellow-500 text-charcoal font-black py-3 rounded-lg text-xs uppercase tracking-widest transition-colors flex items-center justify-center gap-1"
-                        >
-                          Selesai Masak
-                    </button>
-                        <button 
-                          onClick={() => copyToJeggBoy(order)}
-                          className="w-full bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 font-bold py-2.5 rounded-lg text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
-                        >
-                          {copiedId === order.id ? (
-                            <>
-                              <Check size={12} className="text-green-500" /> Disalin!
-                            </>
-                          ) : (
-                            <>
-                              <Copy size={12} /> Salin Format Ojol
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
-            
-          </div>
-        ) : activeTab === "pickup" ? (
-          /* STATUS PICKUP DRIVER TAB: Split screen / dual columns */
-          <div className="h-full flex overflow-hidden">
-            
-            {/* LEFT COLUMN: Belum di-Pickup */}
-            <section className="w-1/2 bg-zinc-50 border-r border-zinc-200 flex flex-col h-full overflow-hidden">
-              <div className="p-4 px-6 border-b border-zinc-200 flex justify-between items-center bg-white shrink-0">
-                <h2 className="text-sm font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                  <span>Belum di-Pickup</span>
-                  <span className="bg-amber-100 text-amber-800 border border-amber-200 text-[10px] px-2 py-0.5 rounded-md font-extrabold">
-                    {orders.filter(o => o.status === "WAITING_PICKUP").length}
-                  </span>
-                </h2>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Menunggu Driver</span>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {orders.filter(o => o.status === "WAITING_PICKUP").length === 0 ? (
-                  <div className="h-64 flex flex-col items-center justify-center text-zinc-400 space-y-3">
-                    <span className="text-3xl">🛵</span>
-                    <p className="text-xs font-bold tracking-widest uppercase">Tidak ada pesanan siap di-pickup</p>
-                  </div>
-                ) : (
-                  orders.filter(o => o.status === "WAITING_PICKUP").map((order) => (
-                    <div 
-                      key={order.id}
-                      className="bg-white rounded-[1.5rem] border border-zinc-200 shadow-xs flex flex-col justify-between overflow-hidden"
-                    >
-                      <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/40">
-                        <h3 className="text-lg font-black text-zinc-800">#{order.shortId}</h3>
-                        <span className="bg-zinc-200 text-zinc-650 text-[9px] font-extrabold px-1.5 py-0.5 rounded tracking-wide">
-                          {order.time}
-                        </span>
-                      </div>
-
-                      <div className="p-4 space-y-4 text-xs">
-                        <div className="space-y-2.5">
-                          {order.items.map((item, idx) => (
-                            <div key={idx} className="flex items-start gap-2 pb-2 border-b border-zinc-100/50 last:border-0 last:pb-0">
-                              <span className="font-extrabold text-gold">{item.qty}x</span>
-                              <div className="flex-1">
-                                <span className="font-bold text-zinc-800 uppercase tracking-tight block">{item.name}</span>
-                                {item.notes && <span className="text-[10px] font-bold text-zinc-400 block italic">Catatan: {item.notes}</span>}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="pt-3 border-t border-zinc-100 space-y-1.5 text-zinc-600">
-                          <div>
-                            <span className="text-[9px] font-bold uppercase text-zinc-400 block tracking-wider">Konsumen</span>
-                            <span className="font-extrabold text-zinc-750 uppercase">{order.customer_name} ({order.customer_phone})</span>
-                          </div>
-                          <div>
-                            <span className="text-[9px] font-bold uppercase text-zinc-400 block tracking-wider">Alamat Kirim</span>
-                            <span className="font-semibold text-zinc-500 leading-normal">{order.delivery_address}</span>
-                          </div>
-                          {order.updated_at && (
-                            <div className="mt-2 pt-2 border-t border-dashed border-zinc-150 text-[10px] text-zinc-455 space-y-0.5 font-medium leading-normal">
-                              <div className="flex justify-between">
-                                <span className="text-[9px] font-bold uppercase text-zinc-400">Diperbarui:</span>
-                                <span>{new Date(order.updated_at).toLocaleString("id-ID")}</span>
-                              </div>
-                              {order.updated_by && (
-                                <div className="flex justify-between">
-                                  <span className="text-[9px] font-bold uppercase text-zinc-400">Oleh:</span>
-                                  <span className="uppercase">{order.updated_by}</span>
-                                </div>
-                              )}
-                              {order.last_status && (
-                                <div className="flex justify-between">
-                                  <span className="text-[9px] font-bold uppercase text-zinc-400">Status Awal:</span>
-                                  <span className="font-extrabold text-gold uppercase">{order.last_status}</span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          <div className="flex justify-between items-center pt-2">
-                            <span className="text-[10px] font-extrabold text-zinc-700 uppercase">Total Harga</span>
-                            <span className="font-black text-sm text-zinc-900">{formatRupiah(order.total_amount)}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="p-4 bg-zinc-50/50 border-t border-zinc-100 flex gap-2">
-                        <button 
-                          onClick={() => handleConfirmPickup(order.id)}
-                          className="flex-1 bg-green-600 hover:bg-green-700 text-white font-black py-2.5 rounded-lg text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-1 shadow-xs"
-                        >
-                          ✓ Konfirmasi Pickup
-                        </button>
-                        <button 
-                          onClick={() => copyToJeggBoy(order)}
-                          className="bg-transparent hover:bg-zinc-100 text-zinc-650 border border-zinc-200 font-bold py-2.5 px-3 rounded-lg text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
-                        >
-                          {copiedId === order.id ? "Disalin!" : "Format Ojol"}
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
-
-            {/* RIGHT COLUMN: Sudah di-Pickup */}
-            <section className="w-1/2 bg-white flex flex-col h-full overflow-hidden">
-              <div className="p-4 px-6 border-b border-zinc-200 flex justify-between items-center bg-zinc-50/30 shrink-0">
-                <h2 className="text-sm font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                  <span>Sudah di-Pickup</span>
-                  <span className="bg-green-100 text-green-800 border border-green-200 text-[10px] px-2 py-0.5 rounded-md font-extrabold">
-                    {pickedUpTodayOrders.length}
-                  </span>
-                </h2>
-                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Hari Ini</span>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                {pickedUpTodayOrders.length === 0 ? (
-                  <div className="h-64 flex flex-col items-center justify-center text-zinc-400 space-y-3">
-                    <Check className="text-green-500 w-9 h-9" strokeWidth={1.5} />
-                    <p className="text-xs font-bold tracking-widest uppercase">Belum ada order diambil hari ini</p>
-                  </div>
-                ) : (
-                  pickedUpTodayOrders.map((order) => (
-                    <div 
-                      key={order.id}
-                      onClick={() => setSelectedOrderDetail(order)}
-                      className="bg-green-50/10 border border-zinc-200 rounded-2xl p-4 flex items-center justify-between cursor-pointer hover:bg-green-50/20 hover:shadow-xs transition-all"
-                      title="Klik untuk detail pesanan"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-zinc-900 text-sm">#{order.shortId}</span>
-                          <span className="bg-green-50 text-green-700 border border-green-200 text-[8px] px-2 py-0.5 rounded font-extrabold tracking-wide uppercase">
-                            DIAMBIL
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-zinc-500 font-medium">
-                          {order.customer_name} • {order.time}
-                        </p>
-                        <p className="text-[10px] text-zinc-400 max-w-[280px] truncate">
-                          {order.delivery_address}
-                        </p>
-                        {order.updated_at && (
-                          <p className="text-[9px] text-zinc-400 mt-1 font-semibold leading-none uppercase">
-                            Audit: {new Date(order.updated_at).toLocaleString("id-ID")} by {order.updated_by} (prev: {order.last_status || "-"})
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="text-right space-y-1">
-                        <span className="font-extrabold text-zinc-900 text-xs block">
-                          {formatRupiah(order.total_amount)}
-                        </span>
-                        <span className="text-[9px] text-zinc-400 font-semibold block">
-                          {order.items.reduce((sum, item) => sum + item.qty, 0)} Porsi
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
-            
-          </div>
-        ) : activeTab === "kelola" ? (
+{activeTab === "kelola" ? (
           /* KELOLA MENU TAB: Catalog management panel */
           <div className="h-full overflow-y-auto p-8 bg-zinc-50 space-y-6 flex flex-col">
             
@@ -1771,10 +1436,16 @@ No penerima : ${order.customer_phone}`;
             {/* Minimalist Metrics aggregates */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               
-              <div className="bg-white rounded-[1.5rem] border border-zinc-200 p-6 shadow-xs flex flex-col justify-between">
-                <span className="text-zinc-400 font-extrabold uppercase text-[10px] tracking-wider block">
-                  Total Omzet Berhasil
-                </span>
+              <div 
+                onClick={() => setRecapModalType("OMZET")}
+                className="bg-white rounded-[1.5rem] border border-zinc-200 p-6 shadow-xs flex flex-col justify-between cursor-pointer hover:border-green-300 hover:shadow-md hover:bg-green-50/10 transition-all group"
+              >
+                <div className="flex justify-between items-start">
+                  <span className="text-zinc-400 font-extrabold uppercase text-[10px] tracking-wider block">
+                    Total Omzet Berhasil
+                  </span>
+                  <span className="text-[10px] font-bold text-green-500 opacity-0 group-hover:opacity-100 transition-opacity">Lihat Rekap ➔</span>
+                </div>
                 <span className="text-3xl font-black text-zinc-950 tracking-tight block mt-3">
                   {formatRupiah(totalOmzet)}
                 </span>
@@ -1783,10 +1454,16 @@ No penerima : ${order.customer_phone}`;
                 </span>
               </div>
 
-              <div className="bg-white rounded-[1.5rem] border border-zinc-200 p-6 shadow-xs flex flex-col justify-between">
-                <span className="text-zinc-400 font-extrabold uppercase text-[10px] tracking-wider block">
-                  Total Porsi Terjual
-                </span>
+              <div 
+                onClick={() => setRecapModalType("PORSI")}
+                className="bg-white rounded-[1.5rem] border border-zinc-200 p-6 shadow-xs flex flex-col justify-between cursor-pointer hover:border-gold hover:shadow-md hover:bg-amber-50/20 transition-all group"
+              >
+                <div className="flex justify-between items-start">
+                  <span className="text-zinc-400 font-extrabold uppercase text-[10px] tracking-wider block">
+                    Total Porsi Terjual
+                  </span>
+                  <span className="text-[10px] font-bold text-gold opacity-0 group-hover:opacity-100 transition-opacity">Lihat Rekap ➔</span>
+                </div>
                 <span className="text-3xl font-black text-zinc-950 tracking-tight block mt-3">
                   {totalPorsi} Porsi
                 </span>
@@ -1795,10 +1472,16 @@ No penerima : ${order.customer_phone}`;
                 </span>
               </div>
 
-              <div className="bg-white rounded-[1.5rem] border border-zinc-200 p-6 shadow-xs flex flex-col justify-between">
-                <span className="text-zinc-400 font-extrabold uppercase text-[10px] tracking-wider block">
-                  Total Order Dibatalkan
-                </span>
+              <div 
+                onClick={() => setRecapModalType("BATAL")}
+                className="bg-white rounded-[1.5rem] border border-zinc-200 p-6 shadow-xs flex flex-col justify-between cursor-pointer hover:border-red-300 hover:shadow-md hover:bg-red-50/20 transition-all group"
+              >
+                <div className="flex justify-between items-start">
+                  <span className="text-zinc-400 font-extrabold uppercase text-[10px] tracking-wider block">
+                    Total Order Dibatalkan
+                  </span>
+                  <span className="text-[10px] font-bold text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">Lihat Rekap ➔</span>
+                </div>
                 <span className="text-3xl font-black text-zinc-950 tracking-tight block mt-3">
                   {totalDibatalkan} Order
                 </span>
@@ -1810,7 +1493,7 @@ No penerima : ${order.customer_phone}`;
             </div>
 
             {/* History Table list */}
-            <div className="bg-white rounded-[1.5rem] border border-zinc-200 shadow-xs overflow-hidden">
+            <div id="history-table" className="bg-white rounded-[1.5rem] border border-zinc-200 shadow-xs overflow-hidden scroll-mt-24">
               <div className="p-4 px-6 border-b border-zinc-250 flex flex-col md:flex-row justify-between md:items-center gap-4 bg-white">
                 <div className="space-y-1">
                   <h3 className="text-xs font-black text-zinc-700 uppercase tracking-widest">Daftar Transaksi Selesai</h3>
@@ -1936,9 +1619,20 @@ No penerima : ${order.customer_phone}`;
                           </td>
                           <td className="py-4 px-6 text-center">
                             {order.status === "PICKED_UP" ? (
-                              <span className="bg-green-50 text-green-700 border border-green-200 text-[9px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider">
-                                SUKSES
-                              </span>
+                              <div className="flex flex-col items-center gap-1.5">
+                                <span className="bg-green-50 text-green-700 border border-green-200 text-[9px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider">
+                                  SUKSES
+                                </span>
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCancel(order.id);
+                                  }}
+                                  className="text-[9px] font-bold uppercase tracking-wider text-red-500 hover:text-red-700 underline decoration-red-500/30 underline-offset-2 transition-colors"
+                                >
+                                  Retur / Batal
+                                </button>
+                              </div>
                             ) : (
                               <div className="flex flex-col items-center gap-1.5">
                                 <span className="bg-red-50 text-red-700 border border-red-200 text-[9px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider">
@@ -2320,9 +2014,18 @@ No penerima : ${order.customer_phone}`;
                     {selectedOrderDetail.status === "PICKED_UP" ? "Selesai / Diambil" : selectedOrderDetail.status}
                   </span>
                 </div>
-                <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">
+                <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider mt-1">
                   Diterima: {selectedOrderDetail.time} ({selectedOrderDetail.created_at ? new Date(selectedOrderDetail.created_at).toLocaleDateString("id-ID") : "-"})
                 </p>
+                {selectedOrderDetail.status === "CANCELLED" && selectedOrderDetail.cancel_reason && (
+                  <div className="mt-3 bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2.5">
+                    <span className="text-red-500 mt-0.5">⚠️</span>
+                    <div>
+                      <p className="text-[9px] font-black text-red-500 uppercase tracking-widest mb-0.5">Alasan Pembatalan / Retur</p>
+                      <p className="text-xs font-bold text-red-700 leading-snug">{selectedOrderDetail.cancel_reason}</p>
+                    </div>
+                  </div>
+                )}
               </div>
               <button
                 onClick={() => setSelectedOrderDetail(null)}
@@ -2412,6 +2115,115 @@ No penerima : ${order.customer_phone}`;
             <div className="p-6 border-t border-zinc-100 flex items-center justify-between bg-zinc-50/50 shrink-0">
               <span className="text-zinc-500 font-extrabold uppercase text-[10px]">Total Pembayaran</span>
               <span className="text-lg font-black text-zinc-950">{formatRupiah(selectedOrderDetail.total_amount)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recap Modal */}
+      {recapModalType !== null && (
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] max-w-lg w-full border border-zinc-150 shadow-2xl relative flex flex-col max-h-[85vh] overflow-hidden">
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between shrink-0 bg-white z-10">
+              <div>
+                <h3 className="text-xl font-black text-charcoal uppercase tracking-tight">
+                  {recapModalType === "PORSI" ? "Rekap Porsi Terjual" : recapModalType === "OMZET" ? "Rekap Pendapatan" : "Rekap Pembatalan"}
+                </h3>
+                <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mt-0.5">
+                  {recapModalType === "PORSI" ? "Rincian Menu Laku Hari Ini" : recapModalType === "OMZET" ? "Rincian Omzet Harian" : "Rincian Order Batal/Retur"}
+                </p>
+              </div>
+              <button onClick={() => setRecapModalType(null)} className="p-2 text-zinc-400 hover:text-zinc-700 rounded-full hover:bg-zinc-100 transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="overflow-y-auto p-6 bg-zinc-50/30">
+              <div className="border border-zinc-200 rounded-2xl bg-white overflow-hidden divide-y divide-zinc-100">
+                {(() => {
+                  if (recapModalType === "PORSI") {
+                    const counts: Record<string, { qty: number, total: number }> = {};
+                    historyOrders.filter(o => o.status === "PICKED_UP").forEach(o => {
+                      o.items.forEach(item => {
+                        if (!counts[item.name]) counts[item.name] = { qty: 0, total: 0 };
+                        counts[item.name].qty += item.qty;
+                        counts[item.name].total += (item.qty * item.price);
+                      });
+                    });
+                    const sorted = Object.entries(counts).map(([name, data]) => ({ name, ...data })).sort((a, b) => b.qty - a.qty);
+                    
+                    if (sorted.length === 0) return <div className="p-8 text-center text-zinc-400 font-bold text-xs uppercase tracking-widest">Belum ada menu yang terjual</div>;
+
+                    return sorted.map((item, idx) => (
+                      <div key={idx} className="p-4 flex justify-between items-center hover:bg-zinc-50 transition-colors">
+                        <div className="flex flex-col gap-1">
+                          <span className="font-extrabold text-zinc-800 uppercase text-sm">{item.name}</span>
+                          <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">{item.qty} Porsi / Gelas</span>
+                        </div>
+                        <span className="font-black text-zinc-900 text-sm">{formatRupiah(item.total)}</span>
+                      </div>
+                    ));
+                  }
+
+                  if (recapModalType === "OMZET") {
+                    const successOrders = historyOrders.filter(o => o.status === "PICKED_UP");
+                    if (successOrders.length === 0) return <div className="p-8 text-center text-zinc-400 font-bold text-xs uppercase tracking-widest">Belum ada pemasukan</div>;
+                    
+                    const avg = totalOmzet / successOrders.length;
+                    return (
+                      <div className="p-4 space-y-4">
+                        <div className="flex justify-between items-center p-3 bg-green-50 rounded-xl border border-green-100">
+                          <span className="text-[10px] font-black text-green-700 uppercase tracking-wider">Total Transaksi</span>
+                          <span className="text-lg font-black text-green-700">{successOrders.length} Nota</span>
+                        </div>
+                        <div className="flex justify-between items-center p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                          <span className="text-[10px] font-black text-zinc-500 uppercase tracking-wider">Rata-rata Transaksi</span>
+                          <span className="text-sm font-extrabold text-zinc-800">{formatRupiah(avg)}</span>
+                        </div>
+                        <div className="mt-4">
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest px-2 mb-2 block">Daftar Nota Masuk</span>
+                          <div className="space-y-2">
+                            {successOrders.map(o => (
+                              <div key={o.id} className="flex justify-between text-xs px-2 py-1.5 border-b border-zinc-50 last:border-0">
+                                <span className="font-semibold text-zinc-600">#{o.shortId} ({o.customer_name})</span>
+                                <span className="font-extrabold text-zinc-800">{formatRupiah(o.total_amount)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (recapModalType === "BATAL") {
+                    const cancelledOrders = historyOrders.filter(o => o.status === "CANCELLED");
+                    if (cancelledOrders.length === 0) return <div className="p-8 text-center text-zinc-400 font-bold text-xs uppercase tracking-widest">Tidak ada pesanan batal</div>;
+                    
+                    return cancelledOrders.map((o) => (
+                      <div key={o.id} className="p-4 flex justify-between items-start hover:bg-red-50/30 transition-colors">
+                        <div className="flex flex-col gap-1 max-w-[70%]">
+                          <span className="font-extrabold text-zinc-800 uppercase text-xs">#{o.shortId} - {o.customer_name}</span>
+                          <span className="text-[10px] text-red-500 font-bold mt-1 bg-red-50 w-fit px-2 py-0.5 rounded border border-red-100">
+                            {o.cancel_reason || "Tidak ada alasan spesifik"}
+                          </span>
+                        </div>
+                        <span className="font-black text-zinc-500 line-through text-xs">{formatRupiah(o.total_amount)}</span>
+                      </div>
+                    ));
+                  }
+                })()}
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-zinc-100 bg-white shrink-0 flex items-center justify-between">
+              <span className="text-zinc-500 font-extrabold uppercase text-[10px] tracking-wider">
+                {recapModalType === "BATAL" ? "Total Potensi Rugi" : "Total Omzet Hari Ini"}
+              </span>
+              <span className={`text-xl font-black ${recapModalType === "BATAL" ? "text-red-500" : "text-gold"}`}>
+                {recapModalType === "BATAL" 
+                  ? formatRupiah(historyOrders.filter(o => o.status === "CANCELLED").reduce((acc, curr) => acc + curr.total_amount, 0)) 
+                  : formatRupiah(totalOmzet)}
+              </span>
             </div>
           </div>
         </div>

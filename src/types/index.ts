@@ -3,6 +3,7 @@ export interface MenuItem {
   name: string;
   description: string;
   price: number;
+  discount_price?: number | null;
   image_url?: string;
   is_available: boolean;
   category: "Mie Klasik" | "Miago" | "Mie Pedas" | "Rice Bowl & Steak" | "Camilan" | "Minuman";
