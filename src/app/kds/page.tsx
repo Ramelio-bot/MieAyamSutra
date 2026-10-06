@@ -20,6 +20,8 @@ interface Order {
   customer_name: string;
   customer_phone: string;
   delivery_address: string;
+  delivery_notes?: string;
+  payment_method?: string;
   items: OrderItem[];
   total_amount: number;
   status: "PENDING" | "PREPARING" | "WAITING_PICKUP" | "PICKED_UP" | "CANCELLED";
@@ -103,7 +105,9 @@ export default function KitchenDisplaySystem() {
       customer_name: dbOrder.customer_name,
       customer_phone: dbOrder.customer_phone,
       delivery_address: dbOrder.delivery_address,
+      delivery_notes: dbOrder.delivery_notes,
       total_amount: Number(dbOrder.total_amount),
+      payment_method: dbOrder.payment_method,
       status: dbOrder.status,
       items: dbOrder.items,
       cancel_reason: dbOrder.cancel_reason,
