@@ -192,8 +192,11 @@ export default function KitchenDisplaySystem() {
       }
       return;
     }
-    const token = sessionStorage.getItem("sutra_staff_token");
-    await supabase.from("orders").update({ status: newStatus, updated_by: token, updated_at: new Date().toISOString() }).eq("id", id);
+    const { error } = await supabase.from("orders").update({ status: newStatus }).eq("id", id);
+    if (error) {
+      console.error("Failed to update status:", error);
+      alert("Gagal mengupdate status: " + error.message);
+    }
   };
 
   if (!isAuthorized) return <div className="h-screen flex items-center justify-center bg-[#09090b] text-white">Authenticating KDS...</div>;
