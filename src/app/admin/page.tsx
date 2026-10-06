@@ -1143,20 +1143,29 @@ No penerima : ${order.customer_phone}`;
 
         {/* Shortcuts */}
         <div className="ml-auto flex items-center gap-2 py-2">
-          {isMockMode && (
-            <button 
-              onClick={() => {
-                if (confirm("Reset semua data pesanan simulasi menjadi kosong?")) {
+          <button 
+            onClick={async () => {
+              if (confirm("Reset seluruh data pesanan dan riwayat hari ini menjadi kosong? (Proses ini tidak bisa dikembalikan)")) {
+                if (isMockMode) {
                   localStorage.setItem("mock_orders", JSON.stringify([]));
                   localStorage.removeItem("last_order_timestamp");
                   window.location.reload();
+                } else {
+                  showToast("Sedang menghapus pesanan dari server...", "info");
+                  const { error } = await supabase.from("orders").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+                  if (error) {
+                    showToast("Gagal menghapus pesanan: " + error.message, "error");
+                  } else {
+                    showToast("Seluruh pesanan berhasil dihapus dari server!", "success");
+                    setTimeout(() => window.location.reload(), 1500);
+                  }
                 }
-              }}
-              className="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-1.5 border border-red-200"
-            >
-              🗑️ Reset Data
-            </button>
-          )}
+              }
+            }}
+            className="px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-1.5 border border-red-200"
+          >
+            🗑️ Reset Data Pesanan
+          </button>
           <Link href="/kds" className="px-4 py-2 bg-charcoal text-white hover:bg-gold hover:text-charcoal rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-1.5 shadow-sm">
             🖥️ KDS Dapur
           </Link>
