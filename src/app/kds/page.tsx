@@ -34,7 +34,13 @@ export default function KitchenDisplaySystem() {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [isMockMode, setIsMockMode] = useState(true);
+  const [toast, setToast] = useState<{message: string, visible: boolean}>({message: "", visible: false});
   const [isMuted, setIsMuted] = useState(false);
+
+  const showToast = (message: string) => {
+    setToast({ message, visible: true });
+    setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 3000);
+  };
   const isMutedRef = useRef(isMuted);
 
   useEffect(() => {
@@ -206,7 +212,16 @@ export default function KitchenDisplaySystem() {
   if (!isAuthorized) return <div className="h-screen flex items-center justify-center bg-[#09090b] text-white">Authenticating KDS...</div>;
 
   return (
-    <div className="h-screen w-full flex flex-col p-4 gap-4 bg-[#09090b] text-zinc-50 overflow-hidden select-none">
+    <div className="h-screen w-full flex flex-col p-4 gap-4 bg-[#09090b] text-zinc-50 overflow-hidden select-none relative">
+      
+      {/* Toast Notification */}
+      <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ${toast.visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
+        <div className="bg-emerald-500 text-white px-6 py-3 rounded-full font-bold shadow-lg flex items-center gap-2">
+          <Check size={18} strokeWidth={3} />
+          {toast.message}
+        </div>
+      </div>
+
       <header className="flex justify-between items-center bg-zinc-900 px-6 py-4 rounded-2xl shadow-md border border-zinc-800 shrink-0">
         <div className="flex items-center gap-4">
           <button onClick={() => router.push("/admin")} className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-bold tracking-widest uppercase transition-colors flex items-center gap-2">
@@ -337,7 +352,7 @@ ${order.delivery_notes ? `Patokan/Catatan: ${order.delivery_notes}` : ''}
 Pembayaran: CASH`;
 
                         navigator.clipboard.writeText(text);
-                        alert("Teks JeggBoy berhasil disalin!");
+                        showToast("Teks JeggBoy berhasil disalin!");
                       }}
                       className="w-full bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 font-black py-3 rounded-xl text-xs uppercase tracking-widest text-center transition-colors flex items-center justify-center gap-2"
                     >
@@ -395,7 +410,7 @@ ${order.delivery_notes ? `Patokan/Catatan: ${order.delivery_notes}` : ''}
 Pembayaran: CASH`;
 
                       navigator.clipboard.writeText(text);
-                      alert("Teks JeggBoy berhasil disalin!");
+                      showToast("Teks JeggBoy berhasil disalin!");
                     }}
                     className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-3 rounded-xl text-xs uppercase tracking-widest text-center shadow-md active:scale-95 transition-transform flex items-center justify-center gap-2"
                   >
