@@ -418,7 +418,10 @@ export default function MenuPage() {
               <div className="text-center py-10 bg-zinc-50 rounded-2xl border border-zinc-100 mb-8">
                 <div className="text-4xl mb-4">🔒</div>
                 <h3 className="text-xl font-black text-charcoal mb-2 uppercase tracking-wide">Wajib Login Member</h3>
-                <p className="text-sm text-zinc-500 mb-6 max-w-xs mx-auto">Anda harus masuk atau mendaftar sebagai Member terlebih dahulu untuk membuat pesanan.</p>
+                <p className="text-sm text-zinc-500 mb-6 max-w-sm mx-auto">
+                  Silakan <strong>Login</strong> atau <strong>Daftar Member</strong> untuk melanjutkan Checkout. 
+                  Langkah ini diterapkan guna menjamin keamanan, serta menghindari <em>Order Fiktif</em> dari pihak yang tidak bertanggung jawab.
+                </p>
                 <button 
                   onClick={() => router.push("/member")}
                   className="px-8 py-4 bg-charcoal hover:bg-zinc-800 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-md active:scale-95"
