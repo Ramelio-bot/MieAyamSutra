@@ -361,7 +361,7 @@ No. HP: ${order.customer_phone}
 Alamat: ${order.delivery_address}
 ${order.delivery_notes ? `Patokan/Catatan: ${order.delivery_notes}` : ''}
 *Total Belanja:* Rp ${order.total_amount.toLocaleString('id-ID')}
-Pembayaran: ${order.payment_method}`;
+Pembayaran: CASH`;
 
                       navigator.clipboard.writeText(text);
                       alert("Teks JeggBoy berhasil disalin!");
