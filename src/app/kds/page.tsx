@@ -310,9 +310,40 @@ export default function KitchenDisplaySystem() {
                       </div>
                     ))}
                   </div>
-                  <button onClick={() => updateStatus(order.id, "WAITING_PICKUP")} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl text-lg uppercase tracking-widest transition-transform active:scale-95 flex items-center justify-center gap-2">
-                    <Check size={20} strokeWidth={3} /> Siap Saji
-                  </button>
+                  <div className="space-y-2">
+                    <button onClick={() => updateStatus(order.id, "WAITING_PICKUP")} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl text-lg uppercase tracking-widest transition-transform active:scale-95 flex items-center justify-center gap-2">
+                      <Check size={20} strokeWidth={3} /> Siap Saji
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const itemsText = order.items.map(item => {
+                          const noteText = item.notes ? ` (Catatan: ${item.notes})` : '';
+                          return `- ${item.qty}x ${item.name}${noteText}`;
+                        }).join('\n');
+                        
+                        const text = `*Beli Barang/Belanja*
+
+Nama toko : Mie Ayam Sutra (Pusat Kuliner Kridanggo, Salatiga)
+
+Nama barang dan jumlahnya:
+${itemsText}
+
+*Antarkan Ke:*
+Nama: ${order.customer_name}
+No. HP: ${order.customer_phone}
+Alamat: ${order.delivery_address}
+${order.delivery_notes ? `Patokan/Catatan: ${order.delivery_notes}` : ''}
+*Total Belanja:* Rp ${order.total_amount.toLocaleString('id-ID')}
+Pembayaran: CASH`;
+
+                        navigator.clipboard.writeText(text);
+                        alert("Teks JeggBoy berhasil disalin!");
+                      }}
+                      className="w-full bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 font-black py-3 rounded-xl text-xs uppercase tracking-widest text-center transition-colors flex items-center justify-center gap-2"
+                    >
+                      📋 Salin Teks JeggBoy
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
