@@ -337,9 +337,35 @@ export default function KitchenDisplaySystem() {
                       </div>
                     ))}
                   </div>
-                  <div className="w-full bg-zinc-700/50 text-zinc-400 font-black py-3 rounded-xl text-xs uppercase tracking-widest text-center border border-zinc-600 border-dashed">
-                    Menunggu Kasir / Driver
-                  </div>
+                  <button 
+                    onClick={() => {
+                      const itemsText = order.items.map(item => {
+                        const noteText = item.notes ? ` (Catatan: ${item.notes})` : '';
+                        return `- ${item.qty}x ${item.name}${noteText}`;
+                      }).join('\n');
+                      
+                      const text = `*Beli Barang/Belanja*
+
+Nama toko : Mie Ayam Sutra (Pusat Kuliner Kridanggo, Salatiga)
+
+Nama barang dan jumlahnya:
+${itemsText}
+
+*Antarkan Ke:*
+Nama: ${order.customer_name}
+No. HP: ${order.customer_phone}
+Alamat: ${order.delivery_address}
+${order.delivery_notes ? `Patokan/Catatan: ${order.delivery_notes}` : ''}
+*Total Belanja:* Rp ${order.total_amount.toLocaleString('id-ID')}
+Pembayaran: ${order.payment_method}`;
+
+                      navigator.clipboard.writeText(text);
+                      alert("Teks JeggBoy berhasil disalin!");
+                    }}
+                    className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-3 rounded-xl text-xs uppercase tracking-widest text-center shadow-md active:scale-95 transition-transform flex items-center justify-center gap-2"
+                  >
+                    📋 Salin Teks JeggBoy
+                  </button>
                 </div>
               ))}
             </div>
