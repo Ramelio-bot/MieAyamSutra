@@ -135,6 +135,23 @@ export default function MenuPage() {
       }
     };
     loadDbMenus();
+
+    const isMockMode = process.env.NEXT_PUBLIC_MOCK_MODE === "true" ||
+                       !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+                       process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
+    
+    if (!isMockMode) {
+      const channel = supabase.channel("customer-menus")
+        .on("postgres_changes", { event: "*", schema: "public", table: "menus" }, (payload) => {
+          // Re-fetch everything to maintain sorting, or just let loadDbMenus handle it
+          loadDbMenus();
+        })
+        .subscribe();
+      
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
   }, [setMenus]);
 
   // Check rate limit on mount and run a countdown
