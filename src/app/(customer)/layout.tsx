@@ -105,7 +105,7 @@ export default function CustomerLayout({
   // Fetch Store Status
   useEffect(() => {
     const fetchStatus = async () => {
-      const isMockMode = !process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
+      const isMockMode = process.env.NEXT_PUBLIC_MOCK_MODE === "true" || !process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder-project");
       if (isMockMode) {
         const status = localStorage.getItem("mock_store_status");
         if (status) {

@@ -280,7 +280,15 @@ export default function MenuPage() {
       setShowSuccessModal(true);
       
     } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(err);
+      let errMsg = "Kesalahan tidak diketahui.";
+      if (err instanceof Error) {
+        errMsg = err.message;
+      } else if (typeof err === "object" && err !== null) {
+        errMsg = (err as any).message || (err as any).error_description || JSON.stringify(err);
+      } else {
+        errMsg = String(err);
+      }
       showToast("Terjadi kesalahan jaringan: " + errMsg, "error");
     } finally {
       setIsSubmitting(false);
