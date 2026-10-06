@@ -23,6 +23,7 @@ export default function MenuPage() {
     phone: "",
     address: ""
   });
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   
   const [selectedCategory, setSelectedCategory] = useState<string>("Mie Klasik");
   const CATEGORIES = ["Mie Klasik", "Miago", "Mie Pedas", "Rice Bowl & Steak", "Camilan", "Minuman"];
@@ -55,6 +56,22 @@ export default function MenuPage() {
   useEffect(() => {
     setTimeout(() => {
       setMounted(true);
+      const phone = localStorage.getItem("sutra_member_phone");
+      if (phone) {
+        setIsLoggedIn(true);
+        // Try to get name from mock if exists, else just prefill phone
+        const mockMember = localStorage.getItem(`mock_member_${phone}`);
+        if (mockMember) {
+          try {
+            const parsed = JSON.parse(mockMember);
+            setFormData(prev => ({ ...prev, phone, name: parsed.name }));
+          } catch (e) {
+            setFormData(prev => ({ ...prev, phone }));
+          }
+        } else {
+          setFormData(prev => ({ ...prev, phone }));
+        }
+      }
     }, 0);
   }, []);
 
@@ -397,7 +414,20 @@ export default function MenuPage() {
               <p className="text-zinc-400 text-xs font-bold uppercase tracking-wider">Formulir pemesanan langsung via kurir Ojol</p>
             </div>
             
-            <form onSubmit={handleSubmit} className="space-y-12">
+            {!isLoggedIn ? (
+              <div className="text-center py-10 bg-zinc-50 rounded-2xl border border-zinc-100 mb-8">
+                <div className="text-4xl mb-4">🔒</div>
+                <h3 className="text-xl font-black text-charcoal mb-2 uppercase tracking-wide">Wajib Login Member</h3>
+                <p className="text-sm text-zinc-500 mb-6 max-w-xs mx-auto">Anda harus masuk atau mendaftar sebagai Member terlebih dahulu untuk membuat pesanan.</p>
+                <button 
+                  onClick={() => router.push("/member")}
+                  className="px-8 py-4 bg-charcoal hover:bg-zinc-800 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-md active:scale-95"
+                >
+                  Masuk / Daftar Member
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-12">
               {/* Premium Line-border Style Inputs */}
               <div className="relative group">
                 <input 
@@ -497,7 +527,8 @@ export default function MenuPage() {
                   <span>Konfirmasi Pesanan</span>
                 )}
               </button>
-            </form>
+              </form>
+            )}
           </div>
         </div>
       </section>
